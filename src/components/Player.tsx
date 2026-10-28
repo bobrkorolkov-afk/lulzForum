@@ -11,6 +11,18 @@ export function Player() {
   const { saveTrack, tracks } = useApp()
   const { navigate } = useRouter()
   const [queueOpen, setQueueOpen] = useState(false)
+  // Очередь и внешний плеер не должны наезжать друг на друга.
+  const toggleQueue = () => {
+    setQueueOpen((v) => {
+      if (!v) player.setEmbedOpen(false)
+      return !v
+    })
+  }
+  const toggleEmbed = () => {
+    const next = !player.embedOpen
+    player.setEmbedOpen(next)
+    if (next) setQueueOpen(false)
+  }
   const barRef = useRef<HTMLDivElement>(null)
 
   const saved = useMemo(
@@ -107,7 +119,7 @@ export function Player() {
               <Icon name={saved ? 'check' : 'plus'} size={15} />
             </button>
             {track.embedUrl && (
-              <button className="pbtn" onClick={() => player.setEmbedOpen(!player.embedOpen)} title="Внешний плеер">
+              <button className="pbtn" onClick={toggleEmbed} title="Внешний плеер">
                 <Icon name="external" size={15} />
               </button>
             )}
@@ -126,7 +138,7 @@ export function Player() {
             />
             <button
               className={`pbtn ${queueOpen ? 'is-on' : ''}`}
-              onClick={() => setQueueOpen((v) => !v)}
+              onClick={toggleQueue}
               title="Очередь"
             >
               <Icon name="list" size={15} />

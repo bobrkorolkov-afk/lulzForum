@@ -78,7 +78,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
           <Icon name="plus" size={14} /> <span>ПОСТ</span>
         </button>
 
-        <button className="header__icon-btn" onClick={() => navigate('/music')} title="Музыка">
+        <button className="header__icon-btn header__icon-btn--music" onClick={() => navigate('/music')} title="Музыка">
           <Icon name="music" size={17} />
         </button>
 

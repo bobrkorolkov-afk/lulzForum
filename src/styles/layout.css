@@ -1435,7 +1435,7 @@
     padding: 0 10px;
   }
 
-  .header__icon-btn:nth-of-type(1),
+  .header__icon-btn--music,
   .logo__text {
     display: none;
   }

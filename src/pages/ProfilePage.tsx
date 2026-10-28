@@ -50,6 +50,17 @@ export function ProfilePage({ handle }: { handle: string }) {
   const likesReceived = myPosts.reduce((s, p) => s + p.likeCount, 0)
   const isMe = user?.id === profile?.id
 
+  const profileFriendIds = useMemo(() => {
+    if (!profile) return [] as string[]
+    const ids = new Set<string>()
+    for (const f of friendships) {
+      if (f.status !== 'accepted') continue
+      if (f.requesterId === profile.id) ids.add(f.addresseeId)
+      if (f.addresseeId === profile.id) ids.add(f.requesterId)
+    }
+    return Array.from(ids)
+  }, [friendships, profile])
+
   const friendship = profile
     ? friendships.find(
         (f) =>
@@ -169,8 +180,8 @@ export function ProfilePage({ handle }: { handle: string }) {
       <div className="profile-stats">
         <Stat label="постов" value={formatCount(myPosts.length)} onClick={() => setTab('posts')} />
         <Stat label="лайков получил" value={formatCount(likesReceived)} />
-        <Stat label="друзей" value={formatCount(isMe ? friendIds.size : friendships.filter((f) => f.status === 'accepted' && (f.requesterId === profile.id || f.addresseeId === profile.id)).length)} />
-        <Stat label="музыки" value={formatCount(isMe ? tracks.length : 0)} onClick={isMe ? () => setTab('music') : undefined} />
+        <Stat label="друзей" value={formatCount(isMe ? friendIds.size : profileFriendIds.length)} />
+        {isMe && <Stat label="музыки" value={formatCount(tracks.length)} onClick={() => setTab('music')} />}
       </div>
 
       <Segmented<Tab>
@@ -250,7 +261,7 @@ export function ProfilePage({ handle }: { handle: string }) {
           <section className="card">
             <h3>Друзья</h3>
             <div className="friend-chips">
-              {Array.from(friendIds)
+              {profileFriendIds
                 .map((id) => profileById(id))
                 .filter(Boolean)
                 .slice(0, 12)
@@ -259,7 +270,7 @@ export function ProfilePage({ handle }: { handle: string }) {
                     <Avatar seed={f!.handle} name={f!.name} src={f!.avatarUrl} size={18} /> {f!.name}
                   </button>
                 ))}
-              {friendIds.size === 0 && <p className="muted small">Пока нет друзей.</p>}
+              {profileFriendIds.length === 0 && <p className="muted small">Пока нет друзей.</p>}
             </div>
             <h3 style={{ marginTop: 18 }}>Теги пользователя</h3>
             <div className="friend-chips">

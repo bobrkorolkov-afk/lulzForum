@@ -207,6 +207,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback(
     (track: Track, trackQueue?: Track[]) => {
+      if (!track.streamUrl && !track.embedUrl) {
+        if (track.externalUrl && typeof window !== 'undefined') window.open(track.externalUrl, '_blank', 'noopener')
+        return
+      }
       if (trackQueue && trackQueue.length) {
         const idx = Math.max(0, trackQueue.findIndex((t) => t.id === track.id))
         playQueue(trackQueue, idx)
@@ -228,8 +232,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(() => {
     if (!current) return
     if (!current.streamUrl) {
-      if (current.embedUrl) setEmbedOpen(true)
-      setPlaying((p) => !p)
+      if (current.embedUrl) {
+        setEmbedOpen(true)
+        setPlaying((p) => !p)
+      } else if (current.externalUrl) {
+        window.open(current.externalUrl, '_blank', 'noopener')
+      }
       return
     }
     if (!audio) return
