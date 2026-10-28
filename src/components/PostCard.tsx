@@ -5,7 +5,7 @@ import { useRouter } from '../lib/router'
 import { useUI } from '../lib/ui'
 import { useToast } from '../lib/toast'
 import { usePlayer } from '../lib/player'
-import { formatCount, timeAgo, truncate } from '../lib/util'
+import { formatCount, isPixelArt, timeAgo, truncate } from '../lib/util'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
 import { RichText } from './RichText'
@@ -100,7 +100,7 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: () => vo
 
       {post.imageUrl && (
         <button className="post__image" onClick={() => ui.openLightbox(post.imageUrl!)}>
-          <img src={post.imageUrl} alt="Вложение поста" loading="lazy" />
+          <img className={isPixelArt(post.imageUrl) ? 'art--auto' : undefined} src={post.imageUrl} alt="Вложение поста" loading="lazy" />
         </button>
       )}
 
@@ -113,7 +113,9 @@ export function PostCard({ post, onDeleted }: { post: Post; onDeleted?: () => vo
           >
             <Icon name={player.current?.id === post.track.id && player.playing ? 'pause' : 'play'} size={18} />
           </button>
-          {post.track.artwork && <img className="post__track-art" src={post.track.artwork} alt="" />}
+          {post.track.artwork && (
+            <img className={`post__track-art ${isPixelArt(post.track.artwork) ? 'art--auto' : ''}`} src={post.track.artwork} alt="" />
+          )}
           <span className="post__track-main">
             <span className="post__track-title">{post.track.title}</span>
             <span className="post__track-artist">

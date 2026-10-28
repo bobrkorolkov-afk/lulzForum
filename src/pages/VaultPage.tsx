@@ -6,7 +6,7 @@ import { useUI } from '../lib/ui'
 import { useToast } from '../lib/toast'
 import { EmptyState, Modal, Segmented } from '../components/ui'
 import { Icon } from '../components/Icon'
-import { classNames, downloadUrl, formatBytes, formatDate, timeAgo } from '../lib/util'
+import { classNames, downloadUrl, formatBytes, formatDate, isPixelArt, timeAgo } from '../lib/util'
 
 type KindFilter = 'all' | FileItem['kind']
 
@@ -184,7 +184,7 @@ export function VaultPage() {
             <article key={f.id} className="filecard">
               <button className="filecard__thumb" onClick={() => setPreview(f)}>
                 {f.kind === 'image' ? (
-                  <img src={f.url} alt={f.name} loading="lazy" />
+                  <img className={isPixelArt(f.url) ? 'art--auto' : undefined} src={f.url} alt={f.name} loading="lazy" />
                 ) : (
                   <span className={`filecard__icon filecard__icon--${f.kind}`}>
                     <Icon name={kindIcon(f.kind)} size={30} />
@@ -253,7 +253,9 @@ export function VaultPage() {
       <Modal open={Boolean(preview)} onClose={() => setPreview(null)} title={preview?.name} width={720}>
         {preview && (
           <div className="preview">
-            {preview.kind === 'image' && <img className="preview__img" src={preview.url} alt={preview.name} />}
+            {preview.kind === 'image' && (
+              <img className={classNames('preview__img', isPixelArt(preview.url) && 'art--auto')} src={preview.url} alt={preview.name} />
+            )}
             {preview.kind === 'audio' && <audio className="preview__audio" src={preview.url} controls />}
             {preview.kind === 'video' && <video className="preview__video" src={preview.url} controls />}
             {preview.kind !== 'image' && preview.kind !== 'audio' && preview.kind !== 'video' && (

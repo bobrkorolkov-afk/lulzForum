@@ -4,6 +4,7 @@ import { useRouter } from '../lib/router'
 import { useUI } from '../lib/ui'
 import { Avatar } from './Avatar'
 import { Icon } from './Icon'
+import { ThemeSwitch } from './ThemeSwitch'
 
 export function Header({ onMenu }: { onMenu: () => void }) {
   const { user, unreadMessages, unreadNotifications, signOut, mode } = useApp()
@@ -76,6 +77,14 @@ export function Header({ onMenu }: { onMenu: () => void }) {
           title="Новый пост (N)"
         >
           <Icon name="plus" size={14} /> <span>ПОСТ</span>
+        </button>
+
+        <span className="header__theme">
+          <ThemeSwitch compact />
+        </span>
+
+        <button className="header__icon-btn" onClick={() => navigate('/groups')} title="Сообщества">
+          <Icon name="users" size={17} />
         </button>
 
         <button className="header__icon-btn header__icon-btn--music" onClick={() => navigate('/music')} title="Музыка">

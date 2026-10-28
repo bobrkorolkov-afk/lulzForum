@@ -2,10 +2,15 @@ import type {
   Attachment,
   AuthResult,
   Backend,
+  Channel,
+  ChannelKind,
   Chat,
   Comment,
   FileItem,
   Friendship,
+  Group,
+  GroupBundle,
+  GroupMember,
   ID,
   Message,
   Notification,
@@ -97,6 +102,9 @@ interface Db {
   profiles: Profile[]
   posts: Post[]
   comments: Comment[]
+  groups: Group[]
+  channels: Channel[]
+  groupMembers: GroupMember[]
   chats: Chat[]
   messages: Message[]
   friendships: Friendship[]
@@ -129,6 +137,9 @@ export class LocalBackend implements Backend {
         profiles: clone(seed.profiles),
         posts: clone(seed.posts),
         comments: clone(seed.comments),
+        groups: clone(seed.groups),
+        channels: clone(seed.channels),
+        groupMembers: clone(seed.groupMembers),
         chats: clone(seed.chats),
         messages: clone(seed.messages),
         friendships: clone(seed.friendships),
@@ -416,12 +427,227 @@ export class LocalBackend implements Backend {
     await this.persist()
   }
 
+  /* ------------------------------------------------------------- сообщества */
+
+  private channelChat(db: Db, channel: Channel, members: ID[]): Chat {
+    const existing = db.chats.find((c) => c.id === channel.id)
+    if (existing) {
+      existing.title = channel.name
+      existing.memberIds = members
+      existing.kind = 'channel'
+      existing.groupId = channel.groupId
+      return existing
+    }
+    const chat: Chat = {
+      id: channel.id,
+      kind: 'channel',
+      title: channel.name,
+      memberIds: members,
+      groupId: channel.groupId,
+      createdAt: channel.createdAt,
+      lastMessageAt: channel.createdAt,
+      lastMessageBody: '',
+      unreadCount: 0,
+    }
+    db.chats.push(chat)
+    return chat
+  }
+
+  private groupMembers(db: Db, groupId: ID): GroupMember[] {
+    return db.groupMembers.filter((m) => m.groupId === groupId)
+  }
+
+  private syncGroupChats(db: Db, groupId: ID) {
+    const members = this.groupMembers(db, groupId).map((m) => m.userId)
+    for (const channel of db.channels.filter((c) => c.groupId === groupId)) {
+      this.channelChat(db, channel, members)
+    }
+  }
+
+  async fetchGroups(): Promise<Group[]> {
+    const db = await this.load()
+    const me = this.user
+    return clone(
+      db.groups.map((g) => ({
+        ...g,
+        memberCount: this.groupMembers(db, g.id).length,
+        isMember: Boolean(me && this.groupMembers(db, g.id).some((m) => m.userId === me.id)),
+      })),
+    )
+  }
+
+  async fetchGroup(groupId: ID): Promise<GroupBundle | null> {
+    const db = await this.load()
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!group) return null
+    const members = this.groupMembers(db, groupId)
+    this.syncGroupChats(db, groupId)
+    await this.persist()
+    const channels = db.channels.filter((c) => c.groupId === groupId).sort((a, b) => a.position - b.position)
+    return clone({
+      group: {
+        ...group,
+        memberCount: members.length,
+        isMember: Boolean(this.user && members.some((m) => m.userId === this.user!.id)),
+      },
+      channels,
+      members,
+    })
+  }
+
+  async createGroup(name: string, description: string): Promise<GroupBundle> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const now = new Date().toISOString()
+    const group: Group = {
+      id: uid('g'),
+      name: name.trim().slice(0, 60) || 'НОВАЯ ГРУППА',
+      description: description.trim().slice(0, 300),
+      ownerId: me.id,
+      createdAt: now,
+      memberCount: 1,
+      isMember: true,
+    }
+    db.groups.unshift(group)
+    db.groupMembers.push({ groupId: group.id, userId: me.id, role: 'owner', joinedAt: now })
+
+    const textChannel: Channel = {
+      id: uid('cn'),
+      groupId: group.id,
+      name: 'общий',
+      kind: 'text',
+      position: 0,
+      createdAt: now,
+    }
+    const voiceChannel: Channel = {
+      id: uid('cn'),
+      groupId: group.id,
+      name: 'ГОЛОСОВАЯ',
+      kind: 'voice',
+      position: 1,
+      createdAt: now,
+    }
+    db.channels.push(textChannel, voiceChannel)
+    this.channelChat(db, textChannel, [me.id])
+    this.channelChat(db, voiceChannel, [me.id])
+    await this.persist()
+    return {
+      group: { ...group },
+      channels: [textChannel, voiceChannel],
+      members: this.groupMembers(db, group.id),
+    }
+  }
+
+  async joinGroup(groupId: ID): Promise<void> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!group) throw new Error('Группа не найдена')
+    if (!this.groupMembers(db, groupId).some((m) => m.userId === me.id)) {
+      db.groupMembers.push({ groupId, userId: me.id, role: 'member', joinedAt: new Date().toISOString() })
+      const members = this.groupMembers(db, groupId).map((m) => m.userId)
+      for (const c of db.channels.filter((x) => x.groupId === groupId)) {
+        const chat = this.channelChat(db, c, members)
+        chat.memberIds = members
+      }
+    }
+    await this.persist()
+  }
+
+  async leaveGroup(groupId: ID): Promise<void> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const members = this.groupMembers(db, groupId)
+    const own = members.find((m) => m.userId === me.id)
+    if (!own) return
+    db.groupMembers = db.groupMembers.filter((m) => !(m.groupId === groupId && m.userId === me.id))
+    const rest = this.groupMembers(db, groupId)
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!rest.length && group) {
+      await this.deleteGroup(groupId)
+      return
+    }
+    if (own.role === 'owner' && group) {
+      const next = rest[0]
+      next.role = 'owner'
+      group.ownerId = next.userId
+    }
+    if (group) group.memberCount = rest.length
+    const ids = rest.map((m) => m.userId)
+    for (const c of db.channels.filter((x) => x.groupId === groupId)) {
+      const chat = db.chats.find((x) => x.id === c.id)
+      if (chat) chat.memberIds = ids
+    }
+    await this.persist()
+  }
+
+  async updateGroup(groupId: ID, patch: Partial<Pick<Group, 'name' | 'description' | 'iconUrl'>>): Promise<void> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!group) throw new Error('Группа не найдена')
+    if (group.ownerId !== me.id) throw new Error('Менять группу может только владелец')
+    if (patch.name !== undefined) group.name = patch.name.slice(0, 60)
+    if (patch.description !== undefined) group.description = patch.description.slice(0, 300)
+    if (patch.iconUrl !== undefined) group.iconUrl = patch.iconUrl
+    await this.persist()
+  }
+
+  async deleteGroup(groupId: ID): Promise<void> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!group) return
+    if (group.ownerId !== me.id) throw new Error('Удалить группу может только владелец')
+    const channelIds = db.channels.filter((c) => c.groupId === groupId).map((c) => c.id)
+    db.groups = db.groups.filter((g) => g.id !== groupId)
+    db.channels = db.channels.filter((c) => c.groupId !== groupId)
+    db.groupMembers = db.groupMembers.filter((m) => m.groupId !== groupId)
+    db.chats = db.chats.filter((c) => !channelIds.includes(c.id))
+    db.messages = db.messages.filter((m) => !channelIds.includes(m.chatId))
+    await this.persist()
+  }
+
+  async createChannel(groupId: ID, name: string, kind: ChannelKind): Promise<Channel> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const group = db.groups.find((g) => g.id === groupId)
+    if (!group) throw new Error('Группа не найдена')
+    if (!this.groupMembers(db, groupId).some((m) => m.userId === me.id)) throw new Error('Вы не в группе')
+    const channel: Channel = {
+      id: uid('cn'),
+      groupId,
+      name: name.trim().replace(/^#/, '').slice(0, 40).toLowerCase() || 'канал',
+      kind,
+      position: db.channels.filter((c) => c.groupId === groupId).length,
+      createdAt: new Date().toISOString(),
+    }
+    db.channels.push(channel)
+    this.channelChat(db, channel, this.groupMembers(db, groupId).map((m) => m.userId))
+    await this.persist()
+    return clone(channel)
+  }
+
+  async deleteChannel(channelId: ID): Promise<void> {
+    const db = await this.load()
+    const me = this.requireUser()
+    const channel = db.channels.find((c) => c.id === channelId)
+    if (!channel) return
+    const group = db.groups.find((g) => g.id === channel.groupId)
+    if (!group) return
+    if (group.ownerId !== me.id) throw new Error('Удалять каналы может только владелец')
+    db.channels = db.channels.filter((c) => c.id !== channelId)
+    db.chats = db.chats.filter((c) => c.id !== channelId)
+    db.messages = db.messages.filter((m) => m.chatId !== channelId)
+    await this.persist()
+  }
+
   async fetchChats(): Promise<Chat[]> {
     const db = await this.load()
     const me = this.requireUser()
     return clone(
       db.chats
-        .filter((c) => c.memberIds.includes(me.id))
+        .filter((c) => c.kind !== 'channel' && c.memberIds.includes(me.id))
         .sort((a, b) => +new Date(b.lastMessageAt) - +new Date(a.lastMessageAt)),
     )
   }
@@ -703,6 +929,9 @@ function emptyDb(): Db {
     profiles: [],
     posts: [],
     comments: [],
+    groups: [],
+    channels: [],
+    groupMembers: [],
     chats: [],
     messages: [],
     friendships: [],

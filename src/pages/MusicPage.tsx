@@ -4,14 +4,14 @@ import { useApp } from '../lib/app'
 import { usePlayer } from '../lib/player'
 import { useUI } from '../lib/ui'
 import { useToast } from '../lib/toast'
-import { PROVIDER_LABEL, SEARCH_HINTS, resolveMusicLink, searchMusic } from '../lib/music'
+import { PROVIDER_LABEL, SEARCH_HINTS, isZaycevUrl, resolveMusicLink, resolveZaycevLink, searchMusic } from '../lib/music'
 import { AddToPlaylistModal, TrackRow } from '../components/TrackRow'
 import { EmptyState, Modal, Segmented, Spinner } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { formatDuration, timeAgo } from '../lib/util'
 
 type Tab = 'search' | 'library' | 'playlists' | 'link'
-type SourceFilter = 'all' | 'audius' | 'itunes' | 'link'
+type SourceFilter = 'all' | 'audius' | 'itunes' | 'zaycev' | 'link'
 
 export function MusicPage() {
   const {
@@ -42,6 +42,7 @@ export function MusicPage() {
   const [newPlaylistOpen, setNewPlaylistOpen] = useState(false)
   const [linkInput, setLinkInput] = useState('')
   const [linkPreview, setLinkPreview] = useState<Track | null>(null)
+  const [linkBusy, setLinkBusy] = useState(false)
 
   const savedQueue = tracks.map((t) => t.track)
   const activePlaylist = playlists.find((p) => p.id === playlistId) ?? null
@@ -50,7 +51,14 @@ export function MusicPage() {
     : []
 
   const shownResults = useMemo(
-    () => (source === 'all' ? results : results.filter((r) => (source === 'link' ? r.provider === 'link' || r.provider === 'soundcloud' || r.provider === 'yandex' : r.provider === source))),
+    () =>
+      source === 'all'
+        ? results
+        : results.filter((r) =>
+            source === 'link'
+              ? r.provider === 'link' || r.provider === 'soundcloud' || r.provider === 'yandex'
+              : r.provider === source,
+          ),
     [results, source],
   )
 
@@ -149,6 +157,7 @@ export function MusicPage() {
                   { value: 'all', label: 'Все' },
                   { value: 'audius', label: 'Audius' },
                   { value: 'itunes', label: 'iTunes' },
+                  { value: 'zaycev', label: 'Zaycev' },
                   { value: 'link', label: 'Ссылки' },
                 ]}
               />
@@ -420,18 +429,35 @@ export function MusicPage() {
               <Icon name="link" size={18} /> ДОБАВИТЬ ПО ССЫЛКЕ
             </h3>
             <p className="muted small">
-              Поддерживаются SoundCloud, Яндекс Музыка, YouTube, Bandcamp и прямые ссылки на mp3/ogg/wav.
+              Поддерживаются SoundCloud, Яндекс Музыка, Zaycev.net, YouTube, Bandcamp и прямые ссылки на mp3/ogg/wav.
             </p>
             <div className="inline-form">
               <input
                 className="input"
                 value={linkInput}
-                placeholder="https://soundcloud.com/artist/track"
+                placeholder="https://zaycev.net/… или https://soundcloud.com/artist/track"
                 onChange={(e) => setLinkInput(e.target.value)}
               />
               <button
                 className="btn"
-                onClick={() => {
+                onClick={async () => {
+                  if (isZaycevUrl(linkInput)) {
+                    setLinkBusy(true)
+                    try {
+                      const track = await resolveZaycevLink(linkInput.trim())
+                      setLinkPreview(track)
+                      toast.push(
+                        track.streamUrl
+                          ? 'Zaycev: трек найден, метаданные подтянуты'
+                          : 'Zaycev: метаданные подтянуты, слушать — на сайте источника',
+                      )
+                    } catch (e) {
+                      toast.push(e instanceof Error ? e.message : 'Не удалось разобрать ссылку Zaycev', 'error')
+                    } finally {
+                      setLinkBusy(false)
+                    }
+                    return
+                  }
                   try {
                     const { track, note } = resolveMusicLink(linkInput)
                     setLinkPreview(track)
@@ -440,9 +466,9 @@ export function MusicPage() {
                     toast.push(e instanceof Error ? e.message : 'Неверная ссылка', 'error')
                   }
                 }}
-                disabled={!linkInput.trim()}
+                disabled={!linkInput.trim() || linkBusy}
               >
-                ПРОВЕРИТЬ
+                {linkBusy ? 'ТЯНУ…' : 'ПРОВЕРИТЬ'}
               </button>
             </div>
 
@@ -476,7 +502,7 @@ export function MusicPage() {
             )}
 
             <div className="music-link__providers">
-              {(['soundcloud', 'yandex', 'audius', 'itunes', 'link'] as const).map((p) => (
+              {(['soundcloud', 'yandex', 'zaycev', 'audius', 'itunes', 'link'] as const).map((p) => (
                 <span key={p} className="chip chip--tiny">
                   {PROVIDER_LABEL[p]}
                 </span>
@@ -492,6 +518,7 @@ export function MusicPage() {
               <li>SoundCloud: скопируйте обычную ссылку на трек из адресной строки.</li>
               <li>Яндекс Музыка: подойдёт ссылка вида music.yandex.ru/album/…/track/…</li>
               <li>Полное прослушивание зависит от прав сервиса — LulzForum встраивает официальный плеер.</li>
+              <li>Zaycev.net: вставьте ссылку вида zaycev.net/pages/…/….shtml — название и обложку подтянем из API.</li>
               <li>Прямые mp3 играют внутри LulzForum без ограничений.</li>
             </ul>
           </div>

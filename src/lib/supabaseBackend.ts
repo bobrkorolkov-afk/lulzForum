@@ -3,10 +3,15 @@ import type {
   Attachment,
   AuthResult,
   Backend,
+  Channel,
+  ChannelKind,
   Chat,
   Comment,
   FileItem,
   Friendship,
+  Group,
+  GroupBundle,
+  GroupMember,
   ID,
   Message,
   Notification,
@@ -82,6 +87,36 @@ const mapFile = (r: Row): FileItem => ({
   url: String(r.url ?? ''),
   createdAt: String(r.created_at),
   kind: fileKind(String(r.mime ?? ''), String(r.name ?? '')),
+})
+
+const mapGroup = (r: Row, meId: ID | null): Group => {
+  const members = (r.group_members as Array<{ user_id: string }> | undefined) ?? []
+  return {
+    id: String(r.id),
+    name: String(r.name ?? 'ГРУППА'),
+    description: String(r.description ?? ''),
+    ownerId: String(r.owner_id),
+    iconUrl: (r.icon_url as string | null) ?? null,
+    createdAt: String(r.created_at),
+    memberCount: members.length,
+    isMember: Boolean(meId && members.some((m) => String(m.user_id) === meId)),
+  }
+}
+
+const mapChannel = (r: Row): Channel => ({
+  id: String(r.id),
+  groupId: String(r.group_id),
+  name: String(r.name ?? 'канал'),
+  kind: (r.kind as ChannelKind) ?? 'text',
+  position: Number(r.position ?? 0),
+  createdAt: String(r.created_at),
+})
+
+const mapGroupMember = (r: Row): GroupMember => ({
+  groupId: String(r.group_id),
+  userId: String(r.user_id),
+  role: (r.role as GroupMember['role']) ?? 'member',
+  joinedAt: String(r.joined_at),
 })
 
 const mapSavedTrack = (r: Row): SavedTrack => ({
@@ -411,6 +446,7 @@ export class SupabaseBackend implements Backend {
       .from('chats')
       .select('*')
       .in('id', chatIds)
+      .in('kind', ['dm', 'group'])
       .order('last_message_at', { ascending: false })
     if (chatsError) throw chatsError
     const members = await this.chatMembers(chatIds)
@@ -430,9 +466,166 @@ export class SupabaseBackend implements Backend {
         createdAt: String(row.created_at),
         lastMessageAt: String(row.last_message_at ?? row.created_at),
         lastMessageBody: String(row.last_message_body ?? ''),
+        groupId: (row.group_id as string | null) ?? null,
         unreadCount: unread[id] ?? 0,
       }
     })
+  }
+
+  /* ------------------------------------------------------------- сообщества */
+
+  async fetchGroups(): Promise<Group[]> {
+    const me = this.user?.id ?? null
+    const { data, error } = await this.sb
+      .from('groups')
+      .select('*, group_members(user_id)')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    return (data ?? []).map((r) => mapGroup(r as Row, me))
+  }
+
+  async fetchGroup(groupId: ID): Promise<GroupBundle | null> {
+    const me = this.user?.id ?? null
+    const { data: groupRow, error } = await this.sb
+      .from('groups')
+      .select('*, group_members(user_id)')
+      .eq('id', groupId)
+      .maybeSingle()
+    if (error) throw error
+    if (!groupRow) return null
+    const [{ data: channels, error: chError }, { data: members, error: memError }] = await Promise.all([
+      this.sb.from('channels').select('*').eq('group_id', groupId).order('position', { ascending: true }),
+      this.sb.from('group_members').select('*').eq('group_id', groupId),
+    ])
+    if (chError) throw chError
+    if (memError) throw memError
+    return {
+      group: mapGroup(groupRow as Row, me),
+      channels: (channels ?? []).map((r) => mapChannel(r as Row)),
+      members: (members ?? []).map((r) => mapGroupMember(r as Row)),
+    }
+  }
+
+  private async createChannelRow(groupId: ID, name: string, kind: ChannelKind, position: number): Promise<Channel> {
+    const me = this.me
+    const { data, error } = await this.sb
+      .from('channels')
+      .insert({ group_id: groupId, name, kind, position })
+      .select('*')
+      .single()
+    if (error) throw error
+    const channel = mapChannel(data as Row)
+    const { error: chatError } = await this.sb.from('chats').insert({
+      id: channel.id,
+      kind: 'channel',
+      title: channel.name,
+      group_id: groupId,
+      created_by: me.id,
+    })
+    if (chatError) throw chatError
+    return channel
+  }
+
+  async createGroup(name: string, description: string): Promise<GroupBundle> {
+    const me = this.me
+    const { data: groupRow, error } = await this.sb
+      .from('groups')
+      .insert({
+        name: name.trim().slice(0, 60) || 'НОВАЯ ГРУППА',
+        description: description.trim().slice(0, 300),
+        owner_id: me.id,
+      })
+      .select('*')
+      .single()
+    if (error) throw error
+    const groupId = String((groupRow as Row).id)
+
+    const { error: memberError } = await this.sb
+      .from('group_members')
+      .insert({ group_id: groupId, user_id: me.id, role: 'owner' })
+    if (memberError) throw memberError
+
+    const text = await this.createChannelRow(groupId, 'общий', 'text', 0)
+    const voice = await this.createChannelRow(groupId, 'ГОЛОСОВАЯ', 'voice', 1)
+    await this.sb.from('chat_members').upsert([
+      { chat_id: text.id, user_id: me.id },
+      { chat_id: voice.id, user_id: me.id },
+    ])
+
+    return {
+      group: mapGroup({ ...(groupRow as Row), group_members: [{ user_id: me.id }] }, me.id),
+      channels: [text, voice],
+      members: [{ groupId, userId: me.id, role: 'owner', joinedAt: new Date().toISOString() }],
+    }
+  }
+
+  async joinGroup(groupId: ID): Promise<void> {
+    const me = this.me
+    const { error } = await this.sb
+      .from('group_members')
+      .insert({ group_id: groupId, user_id: me.id, role: 'member' })
+    if (error && error.code !== '23505') throw error
+    const { data: channels } = await this.sb.from('channels').select('id').eq('group_id', groupId)
+    const rows = (channels ?? []).map((c) => ({ chat_id: String((c as Row).id), user_id: me.id }))
+    if (rows.length) {
+      const { error: memberError } = await this.sb.from('chat_members').upsert(rows, { ignoreDuplicates: true })
+      if (memberError) throw memberError
+    }
+  }
+
+  async leaveGroup(groupId: ID): Promise<void> {
+    const me = this.me
+    const { error } = await this.sb
+      .from('group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', me.id)
+    if (error) throw error
+    const { data: channels } = await this.sb.from('channels').select('id').eq('group_id', groupId)
+    for (const c of channels ?? []) {
+      await this.sb.from('chat_members').delete().eq('chat_id', String((c as Row).id)).eq('user_id', me.id)
+    }
+  }
+
+  async updateGroup(groupId: ID, patch: Partial<Pick<Group, 'name' | 'description' | 'iconUrl'>>): Promise<void> {
+    const payload: Row = {}
+    if (patch.name !== undefined) payload.name = patch.name.slice(0, 60)
+    if (patch.description !== undefined) payload.description = patch.description.slice(0, 300)
+    if (patch.iconUrl !== undefined) payload.icon_url = patch.iconUrl
+    const { error } = await this.sb.from('groups').update(payload).eq('id', groupId)
+    if (error) throw error
+  }
+
+  async deleteGroup(groupId: ID): Promise<void> {
+    const { error } = await this.sb.from('groups').delete().eq('id', groupId)
+    if (error) throw error
+  }
+
+  async createChannel(groupId: ID, name: string, kind: ChannelKind): Promise<Channel> {
+    const me = this.me
+    const { count } = await this.sb
+      .from('channels')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId)
+    const channel = await this.createChannelRow(
+      groupId,
+      name.trim().replace(/^#/, '').slice(0, 40).toLowerCase() || 'канал',
+      kind,
+      count ?? 0,
+    )
+    const { data: members } = await this.sb.from('group_members').select('user_id').eq('group_id', groupId)
+    const rows = (members ?? []).map((m) => ({ chat_id: channel.id, user_id: String((m as Row).user_id) }))
+    if (rows.length) await this.sb.from('chat_members').upsert(rows, { ignoreDuplicates: true })
+    if (!rows.some((r) => r.user_id === me.id)) {
+      await this.sb.from('chat_members').upsert({ chat_id: channel.id, user_id: me.id }, { ignoreDuplicates: true })
+    }
+    return channel
+  }
+
+  async deleteChannel(channelId: ID): Promise<void> {
+    const { error } = await this.sb.from('channels').delete().eq('id', channelId)
+    if (error) throw error
   }
 
   async createChat(memberIds: ID[], title: string): Promise<Chat> {

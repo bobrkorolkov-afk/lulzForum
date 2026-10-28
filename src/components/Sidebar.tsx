@@ -22,6 +22,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const items: NavItem[] = [
     { label: 'Лента', to: '/', icon: 'home' },
     { label: 'Чаты', to: '/chats', icon: 'chat', badge: unreadMessages, authOnly: true },
+    { label: 'Сообщества', to: '/groups', icon: 'users', authOnly: true },
     { label: 'Музыка', to: '/music', icon: 'music' },
     { label: 'Хранилище', to: '/vault', icon: 'vault', authOnly: true },
     { label: 'Друзья', to: '/friends', icon: 'friends', badge: pendingIncoming.length, authOnly: true },

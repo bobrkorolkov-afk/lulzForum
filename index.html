@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="LulzForum — чёрно-белый bitmap форум-мессенджер: лента, чаты, теги, друзья, личное хранилище файлов и музыка со всего интернета." />
     <title>LulzForum — форум-мессенджер</title>
     <meta property="og:type" content="website" />
@@ -23,17 +23,26 @@
       href="https://fonts.googleapis.com/css2?family=Handjet:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Тема применяется до первой отрисовки, чтобы не было вспышки.
+      try {
+        var savedTheme = localStorage.getItem('lulzforum:theme')
+        if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark'
+      } catch (e) {}
+    </script>
     <style>
-      html, body { margin: 0; background: #fff; color: #000; }
+      html, body { margin: 0; background: var(--paper, #fff); color: var(--ink, #000); }
+      :root { --ink: #000; --paper: #fff; }
+      html[data-theme='dark'] { --ink: #fff; --paper: #000; }
       #boot {
         position: fixed; inset: 0; display: grid; place-items: center;
-        background: #fff; z-index: 9999; font-family: ui-monospace, Menlo, monospace;
+        background: var(--paper); color: var(--ink); z-index: 9999; font-family: ui-monospace, Menlo, monospace;
       }
-      #boot .box { border: 2px solid #000; padding: 18px 26px; text-align: center; }
+      #boot .box { border: 2px solid var(--ink); padding: 18px 26px; text-align: center; }
       #boot b { display: block; font-size: 22px; letter-spacing: 4px; margin-bottom: 10px; }
       #boot i {
-        display: block; width: 160px; height: 10px; border: 2px solid #000;
-        margin: 0 auto; background-image: repeating-linear-gradient(90deg, #000 0 8px, #fff 8px 16px);
+        display: block; width: 160px; height: 10px; border: 2px solid var(--ink);
+        margin: 0 auto; background-image: repeating-linear-gradient(90deg, var(--ink) 0 8px, var(--paper) 8px 16px);
         background-size: 32px 100%; animation: bootmove .6s steps(4) infinite;
       }
       @keyframes bootmove { to { background-position: 32px 0; } }

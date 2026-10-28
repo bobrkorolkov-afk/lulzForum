@@ -3,7 +3,7 @@ import { usePlayer } from '../lib/player'
 import { useApp } from '../lib/app'
 import { useRouter } from '../lib/router'
 import { Icon } from './Icon'
-import { formatDuration } from '../lib/util'
+import { formatDuration, isPixelArt } from '../lib/util'
 import { PROVIDER_LABEL, hasEmbed } from '../lib/music'
 
 export function Player() {
@@ -67,7 +67,7 @@ export function Player() {
           <button className="player__meta" onClick={() => navigate('/music')} title="Открыть музыку">
             <span className="player__art">
               {track.artwork ? (
-                <img src={track.artwork} alt="" />
+                <img className={isPixelArt(track.artwork) ? 'art--auto' : undefined} src={track.artwork} alt="" />
               ) : (
                 <span className="player__art-fallback">
                   <Icon name="music" size={18} />

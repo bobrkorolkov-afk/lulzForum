@@ -17,6 +17,8 @@ import { FeedPage } from './pages/FeedPage'
 import { PostPage } from './pages/PostPage'
 import { TagPage } from './pages/TagPage'
 import { ChatsPage } from './pages/ChatsPage'
+import { GroupsPage } from './pages/GroupsPage'
+import { GroupPage } from './pages/GroupPage'
 import { MusicPage } from './pages/MusicPage'
 import { VaultPage } from './pages/VaultPage'
 import { FriendsPage } from './pages/FriendsPage'
@@ -29,7 +31,7 @@ import { AboutPage } from './pages/AboutPage'
 
 function Page() {
   const { route } = useRouter()
-  const [head, param] = route.segments
+  const [head, param, sub] = route.segments
 
   switch (head) {
     case undefined:
@@ -40,6 +42,10 @@ function Page() {
       return <TagPage tag={param} />
     case 'chats':
       return <ChatsPage chatId={param} />
+    case 'groups':
+      return <GroupsPage />
+    case 'g':
+      return param ? <GroupPage groupId={param} channelId={sub} /> : <GroupsPage />
     case 'music':
       return <MusicPage />
     case 'vault':
@@ -117,17 +123,24 @@ function Shell() {
         }
         return
       }
-      if (key === 'g') {
-        gRef.current = Date.now()
+      const map: Record<string, string> = {
+        f: '/',
+        c: '/chats',
+        g: '/groups',
+        m: '/music',
+        v: '/vault',
+        d: '/friends',
+        n: '/notifications',
+      }
+      const withinG = gRef.current > 0 && Date.now() - gRef.current < 1400
+      if (withinG && map[key]) {
+        e.preventDefault()
+        navigate(map[key])
+        gRef.current = 0
         return
       }
-      if (Date.now() - gRef.current < 1400) {
-        const map: Record<string, string> = { f: '/', c: '/chats', m: '/music', v: '/vault', d: '/friends', n: '/notifications' }
-        if (map[key]) {
-          e.preventDefault()
-          navigate(map[key])
-          gRef.current = 0
-        }
+      if (key === 'g') {
+        gRef.current = Date.now()
       }
       if (key === 'escape') {
         ui.closeComposer()
@@ -218,6 +231,7 @@ function ShortcutsModal() {
     ['Space', 'Пауза / воспроизведение'],
     ['G → F', 'Лента'],
     ['G → C', 'Чаты'],
+    ['G → G', 'Сообщества'],
     ['G → M', 'Музыка'],
     ['G → V', 'Хранилище'],
     ['G → D', 'Друзья'],

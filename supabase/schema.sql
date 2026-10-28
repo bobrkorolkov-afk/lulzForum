@@ -72,13 +72,47 @@ create unique index if not exists friendships_pair_idx
 -- ---------------------------------------------------------------- chats -----
 create table if not exists public.chats (
   id                uuid primary key default gen_random_uuid(),
-  kind              text not null default 'dm' check (kind in ('dm','group')),
+  kind              text not null default 'dm' check (kind in ('dm','group','channel')),
   title             text not null default '',
+  group_id          uuid,
   created_by        uuid references public.profiles(id) on delete set null,
   last_message_at   timestamptz not null default now(),
   last_message_body text not null default '',
   created_at        timestamptz not null default now()
 );
+
+-- -------------------------------------------------------------- сообщества --
+create table if not exists public.groups (
+  id          uuid primary key default gen_random_uuid(),
+  name        text not null default 'ГРУППА',
+  description text not null default '',
+  owner_id    uuid not null references public.profiles(id) on delete cascade,
+  icon_url    text,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists public.group_members (
+  group_id  uuid not null references public.groups(id) on delete cascade,
+  user_id   uuid not null references public.profiles(id) on delete cascade,
+  role      text not null default 'member' check (role in ('owner','member')),
+  joined_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+create table if not exists public.channels (
+  id         uuid primary key default gen_random_uuid(),
+  group_id   uuid not null references public.groups(id) on delete cascade,
+  name       text not null default 'канал',
+  kind       text not null default 'text' check (kind in ('text','voice')),
+  position   integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists channels_group_idx on public.channels (group_id, position);
+
+alter table public.chats
+  drop constraint if exists chats_group_id_fkey;
+alter table public.chats
+  add constraint chats_group_id_fkey foreign key (group_id) references public.groups(id) on delete cascade;
 
 create table if not exists public.chat_members (
   chat_id uuid not null references public.chats(id) on delete cascade,
@@ -157,6 +191,9 @@ alter table public.post_likes     enable row level security;
 alter table public.bookmarks      enable row level security;
 alter table public.comments       enable row level security;
 alter table public.friendships    enable row level security;
+alter table public.groups         enable row level security;
+alter table public.group_members  enable row level security;
+alter table public.channels       enable row level security;
 alter table public.chats          enable row level security;
 alter table public.chat_members   enable row level security;
 alter table public.messages       enable row level security;
@@ -216,6 +253,33 @@ drop policy if exists friends_delete on public.friendships;
 create policy friends_delete on public.friendships for delete
   using (auth.uid() = requester_id or auth.uid() = addressee_id);
 
+-- группы: читают все (их можно находить), меняет владелец
+drop policy if exists groups_read on public.groups;
+create policy groups_read on public.groups for select using (true);
+drop policy if exists groups_insert on public.groups;
+create policy groups_insert on public.groups for insert with check (auth.uid() = owner_id);
+drop policy if exists groups_update on public.groups;
+create policy groups_update on public.groups for update using (auth.uid() = owner_id);
+drop policy if exists groups_delete on public.groups;
+create policy groups_delete on public.groups for delete using (auth.uid() = owner_id);
+
+drop policy if exists group_members_read on public.group_members;
+create policy group_members_read on public.group_members for select using (true);
+drop policy if exists group_members_join on public.group_members;
+create policy group_members_join on public.group_members for insert with check (auth.uid() = user_id);
+drop policy if exists group_members_leave on public.group_members;
+create policy group_members_leave on public.group_members for delete
+  using (auth.uid() = user_id or exists (select 1 from public.groups g where g.id = group_id and g.owner_id = auth.uid()));
+
+drop policy if exists channels_read on public.channels;
+create policy channels_read on public.channels for select using (true);
+drop policy if exists channels_write on public.channels;
+create policy channels_write on public.channels for insert
+  with check (exists (select 1 from public.groups g where g.id = group_id and g.owner_id = auth.uid()));
+drop policy if exists channels_delete on public.channels;
+create policy channels_delete on public.channels for delete
+  using (exists (select 1 from public.groups g where g.id = group_id and g.owner_id = auth.uid()));
+
 -- chats / members / messages: только участники
 create or replace function public.is_chat_member(target_chat uuid)
 returns boolean language sql stable security definer set search_path = public as $$
@@ -232,7 +296,12 @@ create policy chats_update on public.chats for update using (public.is_chat_memb
 drop policy if exists members_read on public.chat_members;
 create policy members_read on public.chat_members for select using (public.is_chat_member(chat_id));
 drop policy if exists members_insert on public.chat_members;
-create policy members_insert on public.chat_members for insert with check (auth.uid() = user_id or public.is_chat_member(chat_id));
+create policy members_insert on public.chat_members for insert
+  with check (
+    auth.uid() = user_id
+    or public.is_chat_member(chat_id)
+    or exists (select 1 from public.chats c where c.id = chat_id and c.created_by = auth.uid())
+  );
 
 drop policy if exists messages_read on public.messages;
 create policy messages_read on public.messages for select using (public.is_chat_member(chat_id));
@@ -386,5 +455,13 @@ drop policy if exists public_write on storage.objects;
 create policy public_write on storage.objects for insert to authenticated with check (bucket_id = 'public');
 drop policy if exists public_delete on storage.objects;
 create policy public_delete on storage.objects for delete to authenticated using (bucket_id = 'public');
+
+-- ==================================================== обновление старой базы ==
+-- Если схема уже была применена раньше, эти строки добавят недостающее.
+alter table public.chats drop constraint if exists chats_kind_check;
+alter table public.chats add constraint chats_kind_check check (kind in ('dm','group','channel'));
+alter table public.chats add column if not exists group_id uuid references public.groups(id) on delete cascade;
+
+alter publication supabase_realtime add table public.messages;
 
 -- Готово. Не забудьте вписать URL и anon key в .env и включить GitHub Pages.

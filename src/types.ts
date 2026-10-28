@@ -12,7 +12,7 @@ export interface Profile {
   bot?: boolean
 }
 
-export type TrackProvider = 'audius' | 'itunes' | 'soundcloud' | 'yandex' | 'link'
+export type TrackProvider = 'audius' | 'itunes' | 'soundcloud' | 'yandex' | 'zaycev' | 'link'
 
 export interface Track {
   /** globally unique: `${provider}:${providerId}` */
@@ -79,17 +79,56 @@ export interface Friendship {
   createdAt: string
 }
 
-export type ChatKind = 'dm' | 'group'
+export type ChatKind = 'dm' | 'group' | 'channel'
 
 export interface Chat {
   id: ID
   kind: ChatKind
   title: string
   memberIds: ID[]
+  groupId?: ID | null
   createdAt: string
   lastMessageAt: string
   lastMessageBody: string
   unreadCount: number
+}
+
+/* --------------------------------------------------------------- сообщества */
+
+export type ChannelKind = 'text' | 'voice'
+export type GroupRole = 'owner' | 'member'
+
+export interface Group {
+  id: ID
+  name: string
+  description: string
+  ownerId: ID
+  iconUrl?: string | null
+  createdAt: string
+  memberCount: number
+  isMember?: boolean
+}
+
+export interface Channel {
+  id: ID
+  groupId: ID
+  name: string
+  kind: ChannelKind
+  position: number
+  createdAt: string
+}
+
+export interface GroupMember {
+  groupId: ID
+  userId: ID
+  role: GroupRole
+  joinedAt: string
+}
+
+export interface GroupBundle {
+  group: Group
+  channels: Channel[]
+  members: GroupMember[]
 }
 
 export interface Attachment {
@@ -170,6 +209,15 @@ export interface Backend {
   removeFriend(id: ID): Promise<void>
 
   fetchChats(): Promise<Chat[]>
+  fetchGroups(): Promise<Group[]>
+  fetchGroup(groupId: ID): Promise<GroupBundle | null>
+  createGroup(name: string, description: string): Promise<GroupBundle>
+  joinGroup(groupId: ID): Promise<void>
+  leaveGroup(groupId: ID): Promise<void>
+  updateGroup(groupId: ID, patch: Partial<Pick<Group, 'name' | 'description' | 'iconUrl'>>): Promise<void>
+  deleteGroup(groupId: ID): Promise<void>
+  createChannel(groupId: ID, name: string, kind: ChannelKind): Promise<Channel>
+  deleteChannel(channelId: ID): Promise<void>
   createChat(memberIds: ID[], title: string): Promise<Chat>
   fetchMessages(chatId: ID): Promise<Message[]>
   sendMessage(chatId: ID, body: string, attachment?: Attachment | null): Promise<Message>

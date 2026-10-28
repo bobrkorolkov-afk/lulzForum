@@ -9,6 +9,9 @@ import { Icon } from '../components/Icon'
 import { EmptyState } from '../components/ui'
 import { supabaseConfigured } from '../lib/app'
 import { downloadUrl, formatBytes } from '../lib/util'
+import { useTheme } from '../lib/theme'
+import { ThemeSwitch } from '../components/ThemeSwitch'
+import { getZaycevSettings, setZaycevSettings, type ZaycevProxyMode } from '../lib/zaycev'
 
 export function SettingsPage() {
   const { user, signOut, files, tracks, posts, mode } = useApp()
@@ -18,6 +21,8 @@ export function SettingsPage() {
   const [reduceMotion, setReduceMotion] = useState(
     () => localStorage.getItem('lulzforum:reduce-motion') === '1',
   )
+  const { theme, setTheme } = useTheme()
+  const [zaycev, setZaycev] = useState(() => getZaycevSettings())
 
   useEffect(() => {
     document.documentElement.classList.toggle('reduce-motion', reduceMotion)
@@ -116,14 +121,86 @@ export function SettingsPage() {
         </div>
         <div className="settings-row">
           <div>
+            <b>Тема</b>
+            <p className="muted small">
+              Две стороны одной пиксельной медали: {theme === 'dark' ? 'белое на чёрном' : 'чёрное на белом'}. Третьего
+              не дано.
+            </p>
+          </div>
+          <div className="settings-row__controls">
+            <ThemeSwitch />
+            <button className="btn btn--sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? 'СВЕТЛАЯ' : 'ТЁМНАЯ'}
+            </button>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div>
             <b>Палитра</b>
             <p className="muted small">LulzForum намеренно чёрно-белый: 1-битный стиль, никаких компромиссов.</p>
           </div>
-          <span className="swatches">
-            <i style={{ background: '#000' }} />
-            <i style={{ background: '#fff' }} />
+          <span className="swatches" data-theme-swatch={theme}>
+            <i style={{ background: theme === 'dark' ? '#fff' : '#000' }} />
+            <i style={{ background: theme === 'dark' ? '#000' : '#fff' }} />
           </span>
         </div>
+      </section>
+
+      <section className="card settings-card">
+        <h3>
+          <Icon name="music" size={14} /> ИСТОЧНИК ZAYCEV.NET
+        </h3>
+        <p className="muted small">
+          API Zaycev.net не отдаёт CORS-заголовки, поэтому браузеру нужен посредник. Выберите режим: публичный
+          CORS-прокси (по умолчанию), свой прокси (Cloudflare Worker в одну строку) или прямое подключение.
+        </p>
+        <div className="settings-row">
+          <div>
+            <b>Режим доступа</b>
+            <p className="muted small">
+              {zaycev.mode === 'auto'
+                ? 'Сначала прямой запрос, затем публичные прокси.'
+                : zaycev.mode === 'public'
+                  ? 'Только публичные прокси — ничего не утекает напрямую.'
+                  : zaycev.mode === 'custom'
+                    ? 'Свой прокси: надёжнее и без лимитов.'
+                    : 'Только прямой запрос — сработает, если CORS включат.'}
+            </p>
+          </div>
+          <select
+            className="input input--select"
+            value={zaycev.mode}
+            onChange={(e) => {
+              const next = { ...zaycev, mode: e.target.value as ZaycevProxyMode }
+              setZaycev(next)
+              setZaycevSettings(next)
+              toast.push('Режим Zaycev обновлён', 'ok')
+            }}
+          >
+            <option value="auto">АВТО</option>
+            <option value="public">ПУБЛИЧНЫЙ ПРОКСИ</option>
+            <option value="custom">СВОЙ ПРОКСИ</option>
+            <option value="direct">НАПРЯМУЮ</option>
+          </select>
+        </div>
+        {zaycev.mode === 'custom' && (
+          <div className="settings-row">
+            <div>
+              <b>URL прокси</b>
+              <p className="muted small">Вставьте адрес, поддерживающий ?url=… или %s.</p>
+            </div>
+            <input
+              className="input"
+              value={zaycev.customUrl}
+              placeholder="https://my-proxy.workers.dev/?url="
+              onChange={(e) => setZaycev({ ...zaycev, customUrl: e.target.value })}
+              onBlur={() => {
+                setZaycevSettings(zaycev)
+                toast.push('Прокси сохранён', 'ok')
+              }}
+            />
+          </div>
+        )}
       </section>
 
       <section className="card settings-card">
@@ -178,6 +255,9 @@ export function SettingsPage() {
           </li>
           <li>
             <kbd>G</kbd> затем <kbd>M</kbd> — музыка
+          </li>
+          <li>
+            <kbd>G</kbd> затем <kbd>G</kbd> — сообщества
           </li>
           <li>
             <kbd>G</kbd> затем <kbd>V</kbd> — хранилище

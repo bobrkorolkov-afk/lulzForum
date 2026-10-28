@@ -36,7 +36,7 @@ export function Avatar({ seed, name, src, size = 40, ring = false, className }: 
   const url = src || fallback
   return (
     <span
-      className={`avatar ${ring ? 'avatar--ring' : ''} ${className ?? ''}`}
+      className={`avatar ${src ? '' : 'avatar--auto'} ${ring ? 'avatar--ring' : ''} ${className ?? ''}`}
       style={{ width: size, height: size }}
       title={name}
     >

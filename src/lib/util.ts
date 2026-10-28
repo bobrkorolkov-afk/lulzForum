@@ -112,6 +112,11 @@ export function formatCount(n: number): string {
   return `${Math.round(n / 1000)}к`
 }
 
+/** Сгенерированная пиксель-графика (SVG data-url) — её нужно инвертировать в тёмной теме. */
+export function isPixelArt(url?: string | null): boolean {
+  return Boolean(url && url.startsWith('data:image/svg'))
+}
+
 export function isImageUrl(url: string): boolean {
   return /^data:image\//.test(url) || /\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(url)
 }

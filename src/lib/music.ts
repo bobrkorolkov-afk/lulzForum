@@ -1,4 +1,5 @@
 import type { Track, TrackProvider } from '../types'
+import { isZaycevUrl, resolveZaycevLink, searchZaycev } from './zaycev'
 
 /* ---------------------------------------------------------------------------
  * Поиск музыки «по всему интернету» без API-ключей и без сервера:
@@ -124,7 +125,9 @@ export async function searchMusic(query: string, limitPerSource = 8): Promise<Se
   const q = query.trim()
   if (!q) return { tracks: [], errors: [] }
   const errors: string[] = []
-  const [audius, itunes, openverse] = await Promise.all([
+  const withTimeout = <T,>(promise: Promise<T>, fallback: T, ms: number): Promise<T> =>
+    Promise.race([promise.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))])
+  const [audius, itunes, openverse, zaycev] = await Promise.all([
     searchAudius(q, limitPerSource).catch(() => {
       errors.push('Audius недоступен')
       return [] as Track[]
@@ -137,10 +140,19 @@ export async function searchMusic(query: string, limitPerSource = 8): Promise<Se
       errors.push('Openverse недоступен')
       return [] as Track[]
     }),
+    withTimeout(
+      searchZaycev(q, Math.min(8, limitPerSource)).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'ошибка'
+        errors.push(`Zaycev: ${message.slice(0, 90)}`)
+        return [] as Track[]
+      }),
+      [] as Track[],
+      9500,
+    ),
   ])
   const seen = new Set<string>()
   const tracks: Track[] = []
-  for (const t of [...audius, ...itunes, ...openverse]) {
+  for (const t of [...zaycev, ...audius, ...itunes, ...openverse]) {
     const key = `${t.title}|${t.artist}`.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -217,6 +229,20 @@ export function resolveMusicLink(raw: string): ResolvedLink {
     }
   }
 
+  if (isZaycevUrl(url)) {
+    return {
+      track: {
+        id: `zaycev:${encodeURIComponent(url)}`,
+        provider: 'zaycev',
+        title: 'Трек с Zaycev.net',
+        artist: 'ZAYCEV.NET',
+        externalUrl: url,
+        streamUrl: null,
+      },
+      note: 'Zaycev: подтягиваем название и обложку из API…',
+    }
+  }
+
   if (BANDCAMP_RE.test(url)) {
     return {
       track: {
@@ -267,6 +293,7 @@ function guessTitleFromUrl(url: string): string {
 export const PROVIDER_LABEL: Record<TrackProvider, string> = {
   audius: 'AUDIUS',
   itunes: 'ITUNES',
+  zaycev: 'ZAYCEV',
   soundcloud: 'SOUNDCLOUD',
   yandex: 'ЯНДЕКС',
   link: 'LINK',
@@ -282,3 +309,5 @@ export function hasEmbed(track: Track): boolean {
 
 /** Подсказки для пустого поиска. */
 export const SEARCH_HINTS = ['lofi hip hop', 'битмейкинг', 'synthwave', 'чиптюн', 'ambient', 'пост-панк']
+
+export { resolveZaycevLink, isZaycevUrl }

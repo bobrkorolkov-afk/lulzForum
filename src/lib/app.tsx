@@ -13,8 +13,12 @@ import type {
   Backend,
   Chat,
   Comment,
+  Channel,
+  ChannelKind,
   FileItem,
   Friendship,
+  Group,
+  GroupBundle,
   ID,
   Message,
   Notification,
@@ -46,6 +50,7 @@ export interface DataState {
   posts: Post[]
   friendships: Friendship[]
   chats: Chat[]
+  groups: Group[]
   files: FileItem[]
   tracks: SavedTrack[]
   playlists: Playlist[]
@@ -57,6 +62,7 @@ const emptyData: DataState = {
   posts: [],
   friendships: [],
   chats: [],
+  groups: [],
   files: [],
   tracks: [],
   playlists: [],
@@ -93,6 +99,14 @@ interface AppValue extends DataState {
   sendMessage: (chatId: ID, body: string, attachment?: Attachment | null) => Promise<Message>
   openChat: (chatId: ID, memberIds: ID[]) => Promise<void>
   createGroupChat: (memberIds: ID[], title: string) => Promise<Chat>
+  loadGroup: (groupId: ID) => Promise<GroupBundle | null>
+  createGroup: (name: string, description: string) => Promise<GroupBundle | null>
+  joinGroup: (groupId: ID) => Promise<void>
+  leaveGroup: (groupId: ID) => Promise<void>
+  updateGroup: (groupId: ID, patch: Partial<Pick<Group, 'name' | 'description' | 'iconUrl'>>) => Promise<void>
+  deleteGroup: (groupId: ID) => Promise<void>
+  createChannel: (groupId: ID, name: string, kind: ChannelKind) => Promise<Channel | null>
+  deleteChannel: (channelId: ID) => Promise<void>
   startDm: (userId: ID) => Promise<Chat>
   loadMessages: (chatId: ID, memberIds: ID[]) => Promise<Message[]>
   messagesOf: Record<ID, Message[]>
@@ -138,17 +152,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return fallback
       }
     }
-    const [profiles, posts, friendships, chats, files, tracks, playlists, notifications] = await Promise.all([
+    const [profiles, posts, friendships, chats, groups, files, tracks, playlists, notifications] = await Promise.all([
       safe(() => backend.fetchProfiles(), [] as Profile[]),
       safe(() => backend.fetchPosts(), [] as Post[]),
       current ? safe(() => backend.fetchFriendships(), [] as Friendship[]) : Promise.resolve([] as Friendship[]),
       current ? safe(() => backend.fetchChats(), [] as Chat[]) : Promise.resolve([] as Chat[]),
+      safe(() => backend.fetchGroups(), [] as Group[]),
       current ? safe(() => backend.fetchFiles(), [] as FileItem[]) : Promise.resolve([] as FileItem[]),
       current ? safe(() => backend.fetchTracks(), [] as SavedTrack[]) : Promise.resolve([] as SavedTrack[]),
       current ? safe(() => backend.fetchPlaylists(), [] as Playlist[]) : Promise.resolve([] as Playlist[]),
       current ? safe(() => backend.fetchNotifications(), [] as Notification[]) : Promise.resolve([] as Notification[]),
     ])
-    setData({ profiles, posts, friendships, chats, files, tracks, playlists, notifications })
+    setData({ profiles, posts, friendships, chats, groups, files, tracks, playlists, notifications })
   }, [])
 
   const reload = useCallback(async () => {
@@ -684,6 +699,178 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /* -------------------------------------------------------------- сообщества */
+
+  const loadGroup = useCallback(
+    async (groupId: ID) => {
+      try {
+        const bundle = await backend.fetchGroup(groupId)
+        if (!bundle) return null
+        setData((d) => ({
+          ...d,
+          groups: d.groups.some((g) => g.id === bundle.group.id)
+            ? d.groups.map((g) => (g.id === bundle.group.id ? bundle.group : g))
+            : [bundle.group, ...d.groups],
+          chats: [
+            ...d.chats,
+            ...bundle.channels
+              .filter((ch) => !d.chats.some((c) => c.id === ch.id))
+              .map<Chat>((ch) => ({
+                id: ch.id,
+                kind: 'channel',
+                title: ch.name,
+                memberIds: bundle.members.map((m) => m.userId),
+                groupId: bundle.group.id,
+                createdAt: ch.createdAt,
+                lastMessageAt: ch.createdAt,
+                lastMessageBody: '',
+                unreadCount: 0,
+              })),
+          ],
+        }))
+        return bundle
+      } catch (e) {
+        fail(e)
+        return null
+      }
+    },
+    [fail],
+  )
+
+  const createGroup = useCallback(
+    async (name: string, description: string) => {
+      if (!user) {
+        toast.push('Войдите, чтобы создать сообщество', 'error')
+        return null
+      }
+      try {
+        const bundle = await backend.createGroup(name, description)
+        setData((d) => ({
+          ...d,
+          groups: [bundle.group, ...d.groups],
+          chats: [
+            ...bundle.channels.map<Chat>((ch) => ({
+              id: ch.id,
+              kind: 'channel',
+              title: ch.name,
+              memberIds: bundle.members.map((m) => m.userId),
+              groupId: bundle.group.id,
+              createdAt: ch.createdAt,
+              lastMessageAt: ch.createdAt,
+              lastMessageBody: '',
+              unreadCount: 0,
+            })),
+            ...d.chats,
+          ],
+        }))
+        toast.push('Сообщество создано', 'ok')
+        return bundle
+      } catch (e) {
+        fail(e)
+        return null
+      }
+    },
+    [fail, toast, user],
+  )
+
+  const joinGroup = useCallback(
+    async (groupId: ID) => {
+      if (!user) {
+        toast.push('Войдите, чтобы вступить в сообщество', 'error')
+        return
+      }
+      try {
+        await backend.joinGroup(groupId)
+        setData((d) => ({
+          ...d,
+          groups: d.groups.map((g) =>
+            g.id === groupId ? { ...g, isMember: true, memberCount: g.memberCount + 1 } : g,
+          ),
+        }))
+        toast.push('Вы в сообществе', 'ok')
+      } catch (e) {
+        fail(e)
+      }
+    },
+    [fail, toast, user],
+  )
+
+  const leaveGroup = useCallback(
+    async (groupId: ID) => {
+      try {
+        await backend.leaveGroup(groupId)
+        setData((d) => ({
+          ...d,
+          groups: d.groups
+            .map((g) => (g.id === groupId ? { ...g, isMember: false, memberCount: Math.max(0, g.memberCount - 1) } : g))
+            .filter((g) => g.memberCount > 0),
+          chats: d.chats.filter((c) => c.groupId !== groupId),
+        }))
+        toast.push('Вы покинули сообщество')
+      } catch (e) {
+        fail(e)
+      }
+    },
+    [fail, toast],
+  )
+
+  const updateGroup = useCallback(
+    async (groupId: ID, patch: Partial<Pick<Group, 'name' | 'description' | 'iconUrl'>>) => {
+      try {
+        await backend.updateGroup(groupId, patch)
+        setData((d) => ({ ...d, groups: d.groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g)) }))
+        toast.push('Сообщество обновлено', 'ok')
+      } catch (e) {
+        fail(e)
+      }
+    },
+    [fail, toast],
+  )
+
+  const deleteGroup = useCallback(
+    async (groupId: ID) => {
+      try {
+        await backend.deleteGroup(groupId)
+        setData((d) => ({
+          ...d,
+          groups: d.groups.filter((g) => g.id !== groupId),
+          chats: d.chats.filter((c) => c.groupId !== groupId),
+        }))
+        toast.push('Сообщество удалено')
+      } catch (e) {
+        fail(e)
+      }
+    },
+    [fail, toast],
+  )
+
+  const createChannel = useCallback(
+    async (groupId: ID, name: string, kind: ChannelKind) => {
+      try {
+        const channel = await backend.createChannel(groupId, name, kind)
+        toast.push(kind === 'voice' ? 'Голосовой канал создан' : 'Текстовый канал создан', 'ok')
+        return channel
+      } catch (e) {
+        fail(e)
+        return null
+      }
+    },
+    [fail, toast],
+  )
+
+  const deleteChannel = useCallback(
+    async (channelId: ID) => {
+      try {
+        await backend.deleteChannel(channelId)
+        setData((d) => ({ ...d, chats: d.chats.filter((c) => c.id !== channelId) }))
+        toast.push('Канал удалён')
+      } catch (e) {
+        fail(e)
+      }
+    },
+    [fail, toast],
+  )
+
   const searchUsers = useCallback(
     async (q: string) => {
       try {
@@ -727,6 +914,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendMessage,
       openChat,
       createGroupChat,
+      loadGroup,
+      createGroup,
+      joinGroup,
+      leaveGroup,
+      updateGroup,
+      deleteGroup,
+      createChannel,
+      deleteChannel,
       startDm,
       loadMessages,
       messagesOf,
@@ -772,6 +967,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendMessage,
       openChat,
       createGroupChat,
+      loadGroup,
+      createGroup,
+      joinGroup,
+      leaveGroup,
+      updateGroup,
+      deleteGroup,
+      createChannel,
+      deleteChannel,
       startDm,
       loadMessages,
       messagesOf,

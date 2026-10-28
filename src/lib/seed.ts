@@ -1,8 +1,11 @@
 import type {
+  Channel,
   Chat,
   Comment,
   FileItem,
   Friendship,
+  Group,
+  GroupMember,
   Message,
   Notification,
   Playlist,
@@ -371,6 +374,79 @@ const comments: Comment[] = [
   { id: 'c_18', postId: 'p_12', authorId: 'u_sasha', body: 'Поставил на второй монитор. Идеально.', createdAt: days(1) },
 ]
 
+const groups: Group[] = [
+  {
+    id: 'g_lulz',
+    name: 'LULZ HQ',
+    description: 'Главный штаб форума: новости, правила, техподдержка и голосовые по вечерам.',
+    ownerId: 'u_root',
+    createdAt: days(60),
+    memberCount: 7,
+  },
+  {
+    id: 'g_night',
+    name: 'НОЧНАЯ СМЕНА',
+    description: 'Для тех, кто не спит: лоу-фай, ночные чаты и голосовой канал до утра.',
+    ownerId: 'u_masha',
+    createdAt: days(30),
+    memberCount: 5,
+  },
+  {
+    id: 'g_pixel',
+    name: 'ПИКСЕЛЬ-ЦЕХ',
+    description: 'Пиксель-арт, дизеринг, аватарки 8×8. Показываем работу и жёстко критикуем.',
+    ownerId: 'u_pete',
+    createdAt: days(18),
+    memberCount: 4,
+  },
+]
+
+const channels: Channel[] = [
+  { id: 'cn_1', groupId: 'g_lulz', name: 'общий', kind: 'text', position: 0, createdAt: days(60) },
+  { id: 'cn_2', groupId: 'g_lulz', name: 'помощь', kind: 'text', position: 1, createdAt: days(58) },
+  { id: 'cn_3', groupId: 'g_lulz', name: 'ГОЛОСОВАЯ · ШТАБ', kind: 'voice', position: 2, createdAt: days(55) },
+  { id: 'cn_4', groupId: 'g_night', name: 'болталка', kind: 'text', position: 0, createdAt: days(30) },
+  { id: 'cn_5', groupId: 'g_night', name: 'музыка', kind: 'text', position: 1, createdAt: days(30) },
+  { id: 'cn_6', groupId: 'g_night', name: 'ГОЛОСОВАЯ · НОЧЬ', kind: 'voice', position: 2, createdAt: days(29) },
+  { id: 'cn_7', groupId: 'g_pixel', name: 'галерея', kind: 'text', position: 0, createdAt: days(18) },
+  { id: 'cn_8', groupId: 'g_pixel', name: 'ГОЛОСОВАЯ · ЦЕХ', kind: 'voice', position: 1, createdAt: days(17) },
+]
+
+const channelMembers: GroupMember[] = [
+  { groupId: 'g_lulz', userId: 'u_root', role: 'owner', joinedAt: days(60) },
+  { groupId: 'g_lulz', userId: demoId, role: 'member', joinedAt: days(40) },
+  { groupId: 'g_lulz', userId: 'u_pete', role: 'member', joinedAt: days(38) },
+  { groupId: 'g_lulz', userId: 'u_vera', role: 'member', joinedAt: days(35) },
+  { groupId: 'g_lulz', userId: 'u_dan', role: 'member', joinedAt: days(33) },
+  { groupId: 'g_lulz', userId: 'u_lord', role: 'member', joinedAt: days(30) },
+  { groupId: 'g_lulz', userId: 'u_sasha', role: 'member', joinedAt: days(20) },
+
+  { groupId: 'g_night', userId: 'u_masha', role: 'owner', joinedAt: days(30) },
+  { groupId: 'g_night', userId: demoId, role: 'member', joinedAt: days(22) },
+  { groupId: 'g_night', userId: 'u_filin', role: 'member', joinedAt: days(21) },
+  { groupId: 'g_night', userId: 'u_sasha', role: 'member', joinedAt: days(19) },
+  { groupId: 'g_night', userId: 'u_lord', role: 'member', joinedAt: days(12) },
+
+  { groupId: 'g_pixel', userId: 'u_pete', role: 'owner', joinedAt: days(18) },
+  { groupId: 'g_pixel', userId: 'u_vera', role: 'member', joinedAt: days(17) },
+  { groupId: 'g_pixel', userId: 'u_dan', role: 'member', joinedAt: days(16) },
+  { groupId: 'g_pixel', userId: 'u_root', role: 'member', joinedAt: days(15) },
+]
+
+const membersOf = (groupId: string) => channelMembers.filter((m) => m.groupId === groupId).map((m) => m.userId)
+
+const channelChats: Chat[] = channels.map((ch) => ({
+  id: ch.id,
+  kind: 'channel',
+  title: ch.name,
+  memberIds: membersOf(ch.groupId),
+  groupId: ch.groupId,
+  createdAt: ch.createdAt,
+  lastMessageAt: hrs(3),
+  lastMessageBody: '',
+  unreadCount: 0,
+}))
+
 const chats: Chat[] = [
   {
     id: 'ch_1',
@@ -422,6 +498,20 @@ const chats: Chat[] = [
     lastMessageBody: 'DITHER DAN: файлы залил, доступ по ссылке',
     unreadCount: 0,
   },
+]
+
+const channelMessages: Message[] = [
+  { id: 'cm_1', chatId: 'cn_1', senderId: 'u_root', body: 'Добро пожаловать в LULZ HQ. Правила в закрепе, вопросы — в #помощь.', createdAt: hrs(26), readBy: [] },
+  { id: 'cm_2', chatId: 'cn_1', senderId: 'u_pete', body: 'Голосовая работает, заходите вечером.', createdAt: hrs(20), readBy: [] },
+  { id: 'cm_3', chatId: 'cn_1', senderId: demoId, body: 'Привет всем! Тут есть канал для музыки?', createdAt: hrs(18), readBy: [demoId] },
+  { id: 'cm_4', chatId: 'cn_1', senderId: 'u_lord', body: 'Ночная смена — там музыка. Ссылка в профиле группы.', createdAt: hrs(17), readBy: [] },
+  { id: 'cm_5', chatId: 'cn_2', senderId: 'u_vera', body: 'Как прикрепить трек к посту?', createdAt: hrs(9), readBy: [] },
+  { id: 'cm_6', chatId: 'cn_2', senderId: 'u_root', body: 'Композер → иконка ноты → поиск или ссылка. Всё сохраняется в «Мою музыку».', createdAt: hrs(8), readBy: [] },
+  { id: 'cm_7', chatId: 'cn_4', senderId: 'u_masha', body: 'Ночь началась. Кто в голосовую?', createdAt: hrs(5), readBy: [] },
+  { id: 'cm_8', chatId: 'cn_4', senderId: 'u_filin', body: 'Я уже там, микрофон проверяю.', createdAt: hrs(4), readBy: [] },
+  { id: 'cm_9', chatId: 'cn_7', senderId: 'u_dan', body: 'Свежий дизеринг: 1 бит, 16 оттенков серого из ничего.', createdAt: hrs(12), readBy: [] },
+  { id: 'cm_10', chatId: 'cn_7', senderId: 'u_pete', body: 'Жёстко. Одобряю.', createdAt: hrs(11), readBy: [] },
+  { id: 'cm_11', chatId: 'cn_5', senderId: 'u_sasha', body: 'Скинул в «Мою музыку» три канала BITMAP FM, слушайте.', createdAt: hrs(7), readBy: [] },
 ]
 
 const messages: Message[] = [
@@ -528,8 +618,11 @@ export const seed = {
   profiles,
   posts,
   comments,
-  chats,
-  messages,
+  groups,
+  channels,
+  groupMembers: channelMembers,
+  chats: [...chats, ...channelChats],
+  messages: [...messages, ...channelMessages],
   friendships,
   savedTracks,
   playlists,

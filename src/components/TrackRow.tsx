@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Playlist, SavedTrack, Track } from '../types'
 import { PROVIDER_LABEL, hasEmbed, isPlayable } from '../lib/music'
-import { formatDuration } from '../lib/util'
+import { formatDuration, isPixelArt } from '../lib/util'
 import { Icon } from './Icon'
 import { Modal } from './ui'
 import { usePlayer } from '../lib/player'
@@ -31,7 +31,7 @@ export function TrackRow({ track, saved, onLike, onSave, onRemove, onAddToPlayli
         title={playable ? 'Слушать' : 'Открыть источник'}
       >
         {track.artwork ? (
-          <img src={track.artwork} alt="" loading="lazy" draggable={false} />
+          <img className={isPixelArt(track.artwork) ? 'art--auto' : undefined} src={track.artwork} alt="" loading="lazy" draggable={false} />
         ) : (
           <span className="track__art-fallback">
             <Icon name="music" size={20} />

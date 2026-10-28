@@ -10,6 +10,11 @@
   --shadow: 4px 4px 0 var(--ink);
   --shadow-sm: 3px 3px 0 var(--ink);
   --grid: rgba(0, 0, 0, 0.07);
+  --line-soft: rgba(0, 0, 0, 0.16);
+  --line-softer: rgba(0, 0, 0, 0.08);
+  --hatch: rgba(255, 255, 255, 0.18);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --inset: rgba(0, 0, 0, 0.08);
   --font-ui: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-display: 'Handjet', 'JetBrains Mono', ui-monospace, monospace;
   --header-h: 58px;
@@ -18,6 +23,20 @@
   --radius: 0px;
   --dither: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.85) 0 1px, transparent 1px 3px);
   --dither-soft: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.5) 0 1px, transparent 1px 4px);
+}
+
+/* Инверсия: белое на чёрном. Меняются только роли цветов, геометрия та же. */
+[data-theme='dark'] {
+  --ink: #ffffff;
+  --paper: #000000;
+  --grid: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.22);
+  --line-softer: rgba(255, 255, 255, 0.1);
+  --hatch: rgba(0, 0, 0, 0.25);
+  --scrim: rgba(0, 0, 0, 0.72);
+  --inset: rgba(255, 255, 255, 0.1);
+  --dither: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.85) 0 1px, transparent 1px 3px);
+  --dither-soft: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.45) 0 1px, transparent 1px 4px);
 }
 
 *,
@@ -286,7 +305,7 @@ textarea.input {
   font-family: var(--font-ui);
   font-size: 13px;
   border-radius: 0;
-  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.08);
+  box-shadow: inset 2px 2px 0 var(--inset);
 }
 
 .input::placeholder,
@@ -794,4 +813,47 @@ kbd {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ------------------------------------------------------------------ темы */
+
+/* Пиксельные картинки нарисованы «чёрным по белому» — в тёмной теме инвертируем. */
+[data-theme='dark'] .avatar--auto img,
+[data-theme='dark'] .art--auto img,
+[data-theme='dark'] .art--auto {
+  filter: invert(1);
+}
+
+.avatar--auto,
+.art--auto {
+  background: var(--paper);
+}
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: var(--line);
+  background: var(--paper);
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-switch__cell {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-right: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.theme-switch__cell:last-child {
+  border-right: none;
+}
+
+.theme-switch__cell.is-on {
+  background: var(--ink);
+  color: var(--paper);
 }
