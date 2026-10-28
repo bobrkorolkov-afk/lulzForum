@@ -33,6 +33,46 @@ export const SUPABASE_ANON_KEY = ENV.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_
 /** Настроен ли Supabase вообще (ключи есть и демо не запрошено вручную). */
 export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY) && !forcedDemo
 
+export interface AuthProviders {
+  google: boolean
+  email: boolean
+  anonymous: boolean
+}
+
+/**
+ * Спрашиваем у GoTrue, какие провайдеры реально включены. Если запрос не удался
+ * (нет сети/старый проект) — возвращаем null и интерфейс работает по умолчанию.
+ */
+export async function fetchAuthProviders(timeoutMs = 3500): Promise<AuthProviders | null> {
+  if (!supabaseConfigured || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      signal: controller.signal,
+      headers: { apikey: SUPABASE_ANON_KEY, Accept: 'application/json' },
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { external?: Record<string, boolean> }
+    const external = json.external ?? {}
+    return {
+      google: Boolean(external.google),
+      email: external.email !== false,
+      anonymous: Boolean(external.anonymous ?? external.anonymous_users),
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Ссылка в дашборд Supabase — чтобы включить провайдера было куда нажать. */
+export function supabaseProviderUrl(): string {
+  const ref = SUPABASE_URL.replace(/^https:\/\//, '').split('.')[0]
+  return `https://supabase.com/dashboard/project/${ref}/auth/providers`
+}
+
 /** Адрес возврата после OAuth: без hash-роутера, только origin + path. */
 export function authRedirectUrl(): string {
   return `${window.location.origin}${window.location.pathname}`

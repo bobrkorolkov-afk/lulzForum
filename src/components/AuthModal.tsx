@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../lib/app'
 import { useUI } from '../lib/ui'
 import { isEmail, safeNick } from '../lib/util'
+import { supabaseProviderUrl } from '../lib/config'
 import { Modal } from './ui'
 import { Icon } from './Icon'
 
 export function AuthModal() {
   const { authOpen, authMode, closeAuth, openAuth } = useUI()
-  const { signIn, signUp, signInDemo, signInWithGoogle, signInWithMagicLink, mode, offline } = useApp()
+  const { signIn, signUp, signInDemo, signInWithGoogle, signInWithMagicLink, signInAsGuest, authProviders, mode, offline } =
+    useApp()
+  const googleReady = authProviders?.google !== false
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -60,6 +63,20 @@ export function AuthModal() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Что-то пошло не так')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const guest = async () => {
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await signInAsGuest()
+      closeAuth()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Гостевой вход недоступен')
     } finally {
       setBusy(false)
     }
@@ -125,9 +142,22 @@ export function AuthModal() {
 
         {mode === 'supabase' && (
           <>
-            <button className="btn btn--google btn--wide" onClick={() => void google()} disabled={busy} type="button">
-              <span className="google-g" aria-hidden="true">G</span> ВОЙТИ ЧЕРЕЗ GOOGLE
+            <button className="btn btn--primary btn--wide" onClick={() => void guest()} disabled={busy} type="button">
+              <Icon name="zap" size={14} /> ВОЙТИ В ОДИН КЛИК (ГОСТЬ)
             </button>
+            {googleReady ? (
+              <button className="btn btn--google btn--wide" onClick={() => void google()} disabled={busy} type="button">
+                <span className="google-g" aria-hidden="true">G</span> ВОЙТИ ЧЕРЕЗ GOOGLE
+              </button>
+            ) : (
+              <p className="auth__provider-note">
+                Google-вход ещё не включён в проекте Supabase. Включите провайдера в{' '}
+                <a href={supabaseProviderUrl()} target="_blank" rel="noopener noreferrer">
+                  Authentication → Providers
+                </a>{' '}
+                (нужен OAuth Client ID из Google Cloud), а пока — гостевой вход или почта.
+              </p>
+            )}
             <div className="auth__divider">
               <span>или почта и пароль</span>
             </div>

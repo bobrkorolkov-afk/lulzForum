@@ -3584,3 +3584,17 @@
     margin-left: 0;
   }
 }
+
+.auth__provider-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 2px dashed var(--line-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.auth__provider-note a {
+  color: inherit;
+  border-bottom: 2px solid currentColor;
+  text-decoration: none;
+}

@@ -198,6 +198,8 @@ export interface Backend {
   signInWithProvider?(provider: 'google'): Promise<boolean>
   /** Вход по ссылке на почту (magic link). */
   signInWithMagicLink?(email: string): Promise<void>
+  /** Гостевой вход в один клик (anonymous sign-in). */
+  signInAnonymously?(): Promise<AuthResult>
   onAuthChange(cb: (user: Profile | null) => void): () => void
   signIn(email: string, password: string): Promise<AuthResult>
   signUp(email: string, password: string, handle: string, name: string): Promise<AuthResult>

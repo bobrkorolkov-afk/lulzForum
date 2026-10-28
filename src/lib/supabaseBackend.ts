@@ -187,6 +187,92 @@ export class SupabaseBackend implements Backend {
     if (error) throw new Error(translateAuthError(error.message))
   }
 
+  /**
+   * Гостевой вход в один клик.
+   *
+   * Сначала пробуем настоящий anonymous sign-in. Если в проекте он выключен
+   * (это настройка дашборда, а не кода), тихо создаём обычный аккаунт со
+   * случайными данными: почта подтверждения не требует (autoconfirm), пароль
+   * остаётся в localStorage, и позже его можно заменить на свой.
+   */
+  async signInAnonymously(): Promise<AuthResult> {
+    const { data, error } = await this.sb.auth.signInAnonymously()
+    if (!error && data.user) {
+      const profile = await this.ensureProfile({
+        id: data.user.id,
+        email: data.user.email ?? null,
+        user_metadata: data.user.user_metadata,
+      })
+      if (!profile) throw new Error('Профиль гостя не создался')
+      this.user = profile
+      this.emit()
+      return { user: profile }
+    }
+    return this.createThrowawayAccount()
+  }
+
+  /** Запасной путь для гостя: обычная регистрация с одноразовыми данными. */
+  private async createThrowawayAccount(): Promise<AuthResult> {
+    const random = Math.random().toString(36).slice(2, 10)
+    const handle = `guest_${random}`
+    const email = `${handle}@guest.lulzforum.app`
+    const password = `${random}-${Math.random().toString(36).slice(2, 12)}-${Date.now().toString(36)}`
+    const { data, error } = await this.sb.auth.signUp({
+      email,
+      password,
+      options: { data: { handle, name: 'ГОСТЬ' }, emailRedirectTo: undefined },
+    })
+    if (error) throw new Error(translateAuthError(error.message))
+    if (!data.user) throw new Error('Не удалось создать гостевой аккаунт')
+    if (!data.session) {
+      throw new Error(
+        'Гостевой вход не сработал: в проекте включено подтверждение почты. Включите anonymous sign-in в Supabase или отключите Confirm email.',
+      )
+    }
+    try {
+      localStorage.setItem('lulzforum:guest', JSON.stringify({ email, password }))
+    } catch {
+      /* приватный режим */
+    }
+    const profile = await this.ensureProfile({
+      id: data.user.id,
+      email: data.user.email ?? email,
+      user_metadata: { handle, name: 'ГОСТЬ' },
+    })
+    if (!profile) throw new Error('Профиль гостя не создался')
+    this.user = profile
+    this.emit()
+    return { user: profile }
+  }
+
+  /** Профиль из auth-пользователя: если строки нет — создаём из метаданных. */
+  private async ensureProfile(user: {
+    id: string
+    email: string | null
+    user_metadata: Record<string, unknown>
+  }): Promise<Profile | null> {
+    const existing = await this.loadProfile(user.id)
+    if (existing) return existing
+    const meta = (user.user_metadata ?? {}) as Record<string, string>
+    const rawHandle =
+      safeNick(meta.handle ?? meta.user_name ?? meta.preferred_username ?? user.email?.split('@')[0] ?? '') || ''
+    const handle = rawHandle || `guest${user.id.replace(/-/g, '').slice(0, 6)}`
+    const name = (meta.full_name || meta.name || (user.email ? handle.toUpperCase() : 'ГОСТЬ')).slice(0, 40)
+    const { data: created, error } = await this.sb
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        handle,
+        name,
+        avatar_url: meta.avatar_url ?? meta.picture ?? null,
+        bio: '',
+      })
+      .select('*')
+      .maybeSingle()
+    if (error) throw error
+    return created ? mapProfile(created as Row) : null
+  }
+
   /** Подписка на изменения авторизации — ровно один раз за жизнь клиента. */
   private subscribeAuth() {
     if (this.authSubscribed) return
@@ -200,30 +286,13 @@ export class SupabaseBackend implements Backend {
             return
           }
           if (!session?.user) return
-          const profile = await this.loadProfile(session.user.id)
+          const profile = await this.ensureProfile({
+            id: session.user.id,
+            email: session.user.email ?? null,
+            user_metadata: session.user.user_metadata ?? {},
+          })
           if (profile) {
             this.user = profile
-            this.emit()
-            return
-          }
-          // Профиля нет (вход через Google впервые) — создаём строку.
-          const meta = (session.user.user_metadata ?? {}) as Record<string, string>
-          const handle =
-            safeNick(meta.handle ?? meta.user_name ?? session.user.email?.split('@')[0] ?? 'user') ||
-            `user${Date.now() % 10000}`
-          const { data: created } = await this.sb
-            .from('profiles')
-            .upsert({
-              id: session.user.id,
-              handle,
-              name: (meta.full_name || meta.name || handle).toUpperCase().slice(0, 40),
-              avatar_url: meta.avatar_url ?? meta.picture ?? null,
-              bio: '',
-            })
-            .select('*')
-            .maybeSingle()
-          if (created) {
-            this.user = mapProfile(created as Row)
             this.emit()
           }
         } catch (error) {
@@ -254,18 +323,11 @@ export class SupabaseBackend implements Backend {
     const { data } = await this.sb.auth.getSession()
     const authUser = data.session?.user
     if (!authUser) return null
-    let profile = await this.loadProfile(authUser.id)
-    if (!profile) {
-      // Trigger may not exist yet — create the row from auth metadata.
-      const meta = (authUser.user_metadata ?? {}) as Record<string, string>
-      const handle = safeNick(meta.handle ?? authUser.email?.split('@')[0] ?? 'user') || `user${Date.now() % 10000}`
-      const { data: created } = await this.sb
-        .from('profiles')
-        .upsert({ id: authUser.id, handle, name: (meta.name ?? handle).toUpperCase(), bio: '' })
-        .select('*')
-        .maybeSingle()
-      if (created) profile = mapProfile(created as Row)
-    }
+    const profile = await this.ensureProfile({
+      id: authUser.id,
+      email: authUser.email ?? null,
+      user_metadata: authUser.user_metadata ?? {},
+    })
     this.user = profile
     return profile
   }
@@ -1014,5 +1076,11 @@ function translateAuthError(message: string): string {
   if (m.includes('already registered')) return 'Такая почта уже занята'
   if (m.includes('password') && m.includes('6')) return 'Пароль должен быть не короче 6 символов'
   if (m.includes('rate limit')) return 'Слишком много попыток, подождите минуту'
+  if (m.includes('provider is not enabled') || m.includes('unsupported provider')) {
+    return 'Этот способ входа не включён в Supabase. Включите провайдера в Authentication → Providers, или войдите по почте / гостем.'
+  }
+  if (m.includes('anonymous') && m.includes('disabled')) {
+    return 'Гостевой вход выключен в Supabase (Authentication → Providers → Anonymous)'
+  }
   return message
 }

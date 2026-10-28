@@ -352,21 +352,40 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare
   base_handle text;
   final_handle text;
+  guess text;
   i int := 0;
 begin
-  base_handle := coalesce(new.raw_user_meta_data->>'handle', split_part(new.email, '@', 1));
-  base_handle := lower(regexp_replace(base_handle, '[^a-z0-9_.-]', '', 'g'));
-  if length(base_handle) < 2 then base_handle := 'user' || substr(new.id::text, 1, 6); end if;
-  final_handle := base_handle;
+  -- Обычная регистрация приходит с почтой и метаданными, гостевой вход
+  -- (anonymous sign-in) и OAuth — без почты, поэтому нужны запасные варианты.
+  guess := coalesce(
+    new.raw_user_meta_data->>'handle',
+    new.raw_user_meta_data->>'user_name',
+    new.raw_user_meta_data->>'preferred_username',
+    split_part(coalesce(new.email, ''), '@', 1),
+    ''
+  );
+  base_handle := lower(regexp_replace(guess, '[^a-zA-Z0-9_.-]', '', 'g'));
+  if base_handle is null or length(base_handle) < 2 then
+    base_handle := 'guest' || substr(replace(new.id::text, '-', ''), 1, 6);
+  end if;
+  if base_handle !~ '^[a-z0-9_.-]{2,24}$' then
+    base_handle := 'user' || substr(replace(new.id::text, '-', ''), 1, 8);
+  end if;
+  final_handle := left(base_handle, 20);
   while exists (select 1 from public.profiles p where p.handle = final_handle) loop
     i := i + 1;
-    final_handle := base_handle || i::text;
+    final_handle := left(base_handle, 18) || i::text;
   end loop;
-  insert into public.profiles (id, handle, name)
+  insert into public.profiles (id, handle, name, avatar_url)
   values (
     new.id,
     final_handle,
-    coalesce(new.raw_user_meta_data->>'name', upper(final_handle))
+    upper(coalesce(
+      new.raw_user_meta_data->>'name',
+      new.raw_user_meta_data->>'full_name',
+      left(final_handle, 24)
+    )),
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture')
   )
   on conflict (id) do nothing;
   return new;

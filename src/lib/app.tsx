@@ -30,7 +30,7 @@ import type {
   Track,
 } from '../types'
 import { LocalBackend } from './localBackend'
-import { SUPABASE_ANON_KEY, SUPABASE_URL, supabaseConfigured } from './config'
+import { SUPABASE_ANON_KEY, SUPABASE_URL, fetchAuthProviders, supabaseConfigured, type AuthProviders } from './config'
 import { SupabaseBackend } from './supabaseBackend'
 import { useToast } from './toast'
 
@@ -98,6 +98,9 @@ interface AppValue extends DataState {
   signInDemo: () => Promise<void>
   signInWithGoogle: () => Promise<void>
   signInWithMagicLink: (email: string) => Promise<void>
+  signInAsGuest: () => Promise<void>
+  /** Какие провайдеры входа реально включены (null — не удалось узнать). */
+  authProviders: AuthProviders | null
   reload: () => Promise<void>
   updateProfile: (patch: Partial<Pick<Profile, 'name' | 'bio' | 'avatarUrl' | 'links' | 'handle'>>) => Promise<void>
   createPost: (input: PostInput) => Promise<void>
@@ -143,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toast = useToast()
   const [booted, setBooted] = useState(false)
   const [offline, setOffline] = useState(false)
+  const [authProviders, setAuthProviders] = useState<AuthProviders | null>(null)
   const [ready, setReady] = useState(false)
   const [user, setUser] = useState<Profile | null>(null)
   const [data, setData] = useState<DataState>(emptyData)
@@ -210,6 +214,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     })()
+    void fetchAuthProviders().then((providers) => {
+      if (alive && providers) setAuthProviders(providers)
+    })
     const unsub = backend.onAuthChange((next) => {
       setUser(next)
       void loadAll(next)
@@ -315,14 +322,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await backend.signInWithProvider('google')
     } catch (e) {
       const text = e instanceof Error ? e.message : String(e)
-      toast.push(
-        /provider is not enabled|not enabled/i.test(text)
-          ? 'Google-вход не включён в Supabase: Authentication → Providers → Google'
-          : text,
-        'error',
-      )
+      if (/provider is not enabled|unsupported provider|not enabled/i.test(text)) {
+        setAuthProviders((prev) => ({ google: false, email: prev?.email ?? true, anonymous: prev?.anonymous ?? false }))
+        toast.push('Google-вход ещё не включён в Supabase — включите провайдера или войдите гостем', 'error')
+        return
+      }
+      toast.push(text, 'error')
     }
   }, [toast])
+
+  const signInAsGuest = useCallback(async () => {
+    try {
+      if (backend.signInAnonymously) {
+        const res = await backend.signInAnonymously()
+        setUser(res.user)
+        await loadAll(res.user)
+        toast.push('Вы вошли как гость — можно всё, что и остальным', 'ok')
+        return
+      }
+      // Без Supabase — обычный демо-аккаунт.
+      const local = backend as unknown as LocalBackend
+      if (typeof local.signInDemo === 'function') {
+        const res = await local.signInDemo()
+        setUser(res.user)
+        await loadAll(res.user)
+        toast.push('Это демо-аккаунт: можно всё потрогать', 'ok')
+        return
+      }
+      toast.push('Гостевой вход недоступен', 'error')
+    } catch (e) {
+      fail(e)
+    }
+  }, [fail, loadAll, toast])
 
   const signInWithMagicLink = useCallback(
     async (email: string) => {
@@ -959,6 +990,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signInDemo,
       signInWithGoogle,
       signInWithMagicLink,
+      signInAsGuest,
+      authProviders,
       reload,
       updateProfile,
       createPost,
@@ -1015,6 +1048,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signInDemo,
       signInWithGoogle,
       signInWithMagicLink,
+      signInAsGuest,
+      authProviders,
       reload,
       updateProfile,
       createPost,
