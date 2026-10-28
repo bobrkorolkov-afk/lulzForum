@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js'
+import { SUPABASE_ANON_KEY, SUPABASE_URL, supabaseConfigured } from './config'
 
 /* ---------------------------------------------------------------------------
  * ГОЛОСОВЫЕ КАНАЛЫ
@@ -9,22 +10,19 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from '@supaba
  * слышите только себя — это честно показывается в интерфейсе.
  * ------------------------------------------------------------------------- */
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
-
 let sharedClient: SupabaseClient | null = null
 
 function client(): SupabaseClient | null {
-  if (!SUPABASE_URL || !SUPABASE_KEY) return null
+  if (!supabaseConfigured || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   if (!sharedClient) {
-    sharedClient = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    sharedClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
   }
   return sharedClient
 }
 
-export const voiceSignalingAvailable = Boolean(SUPABASE_URL && SUPABASE_KEY)
+export const voiceSignalingAvailable = supabaseConfigured
 
 export interface VoicePeer {
   id: string

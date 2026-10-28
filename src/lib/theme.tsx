@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type Theme = 'light' | 'dark'
 
 const KEY = 'lulzforum:theme'
+const MEDIA_KEY = 'lulzforum:invert-media'
 
 export function readTheme(): Theme {
   try {
@@ -12,6 +13,24 @@ export function readTheme(): Theme {
     /* приватный режим */
   }
   return 'light'
+}
+
+export function readInvertMedia(): boolean {
+  try {
+    return localStorage.getItem(MEDIA_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+/** Инверсия картинок в тёмной теме: по умолчанию включена. */
+export function applyInvertMedia(invert: boolean) {
+  document.documentElement.dataset.media = invert ? 'invert' : 'normal'
+  try {
+    localStorage.setItem(MEDIA_KEY, invert ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
 }
 
 export function applyTheme(theme: Theme) {
@@ -31,21 +50,32 @@ interface ThemeValue {
   theme: Theme
   setTheme: (t: Theme) => void
   toggle: () => void
+  invertMedia: boolean
+  setInvertMedia: (v: boolean) => void
 }
 
 const ThemeContext = createContext<ThemeValue | null>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(readTheme)
+  const [invertMedia, setInvertMediaState] = useState<boolean>(readInvertMedia)
 
   useEffect(() => {
     applyTheme(theme)
   }, [theme])
 
+  useEffect(() => {
+    applyInvertMedia(invertMedia)
+  }, [invertMedia])
+
   const setTheme = useCallback((next: Theme) => setThemeState(next), [])
   const toggle = useCallback(() => setThemeState((t) => (t === 'dark' ? 'light' : 'dark')), [])
+  const setInvertMedia = useCallback((next: boolean) => setInvertMediaState(next), [])
 
-  const value = useMemo<ThemeValue>(() => ({ theme, setTheme, toggle }), [theme, setTheme, toggle])
+  const value = useMemo<ThemeValue>(
+    () => ({ theme, setTheme, toggle, invertMedia, setInvertMedia }),
+    [theme, setTheme, toggle, invertMedia, setInvertMedia],
+  )
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 

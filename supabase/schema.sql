@@ -430,7 +430,15 @@ create trigger on_comment_notify
   for each row execute function public.notify_comment();
 
 -- ========================================================== Realtime =======
-alter publication supabase_realtime add table public.messages;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end $$;
 
 -- ========================================================== Storage ========
 insert into storage.buckets (id, name, public)
@@ -462,6 +470,19 @@ alter table public.chats drop constraint if exists chats_kind_check;
 alter table public.chats add constraint chats_kind_check check (kind in ('dm','group','channel'));
 alter table public.chats add column if not exists group_id uuid references public.groups(id) on delete cascade;
 
-alter publication supabase_realtime add table public.messages;
+-- Группа-владелец чата должна быть видна участнику: политика уже покрывает
+-- выборку по id через is_chat_member, здесь только индексы для скорости.
+create index if not exists chats_group_idx on public.chats (group_id);
+create index if not exists group_members_user_idx on public.group_members (user_id);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end $$;
 
 -- Готово. Не забудьте вписать URL и anon key в .env и включить GitHub Pages.

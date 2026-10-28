@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabaseConfigured, useApp } from '../lib/app'
+import { useApp } from '../lib/app'
 import { useUI } from '../lib/ui'
 import { isEmail, safeNick } from '../lib/util'
 import { Modal } from './ui'
@@ -7,7 +7,7 @@ import { Icon } from './Icon'
 
 export function AuthModal() {
   const { authOpen, authMode, closeAuth, openAuth } = useUI()
-  const { signIn, signUp, signInDemo, mode } = useApp()
+  const { signIn, signUp, signInDemo, signInWithGoogle, signInWithMagicLink, mode, offline } = useApp()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -65,6 +65,33 @@ export function AuthModal() {
     }
   }
 
+  const google = async () => {
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await signInWithGoogle()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const magic = async () => {
+    if (!isEmail(email)) {
+      setError('Введите e-mail — на него придёт ссылка для входа')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await signInWithMagicLink(email)
+      setNotice('Ссылка отправлена. Откройте письмо на этом устройстве — вход произойдёт автоматически.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const demo = async () => {
     setBusy(true)
     setError(null)
@@ -95,6 +122,17 @@ export function AuthModal() {
             Создать аккаунт
           </button>
         </div>
+
+        {mode === 'supabase' && (
+          <>
+            <button className="btn btn--google btn--wide" onClick={() => void google()} disabled={busy} type="button">
+              <span className="google-g" aria-hidden="true">G</span> ВОЙТИ ЧЕРЕЗ GOOGLE
+            </button>
+            <div className="auth__divider">
+              <span>или почта и пароль</span>
+            </div>
+          </>
+        )}
 
         <form className="stack" onSubmit={submit}>
           {authMode === 'register' && (
@@ -158,12 +196,18 @@ export function AuthModal() {
           <button className="btn btn--primary btn--wide" type="submit" disabled={busy}>
             {busy ? 'ПОДОЖДИТЕ…' : authMode === 'login' ? 'ВОЙТИ' : 'СОЗДАТЬ АККАУНТ'}
           </button>
+
+          {mode === 'supabase' && (
+            <button className="btn btn--ghost btn--wide" type="button" onClick={() => void magic()} disabled={busy}>
+              <Icon name="send" size={13} /> ПРИСЛАТЬ ССЫЛКУ НА ПОЧТУ ВМЕСТО ПАРОЛЯ
+            </button>
+          )}
         </form>
 
         {mode === 'local' && (
           <>
             <div className="auth__divider">
-              <span>или</span>
+              <span>{offline ? 'Supabase недоступен — локальный режим' : 'или'}</span>
             </div>
             <button className="btn btn--wide" onClick={() => void demo()} disabled={busy}>
               <Icon name="user" size={14} /> ВОЙТИ В ДЕМО-АККАУНТ
@@ -172,9 +216,11 @@ export function AuthModal() {
         )}
 
         <p className="auth__hint">
-          {supabaseConfigured
-            ? 'Аккаунты Supabase: почта + пароль. После регистрации может понадобиться подтверждение почты.'
-            : 'Supabase не подключён — работает полностью локальный демо-режим. Данные хранятся только в вашем браузере (IndexedDB), аккаунт можно создать на этой же странице.'}
+          {mode === 'supabase'
+            ? 'Аккаунты хранятся в Supabase: Google в один клик, ссылка на почту или обычный пароль. Данные общие для всех, кто зайдёт на сайт.'
+            : offline
+              ? 'Supabase не ответил (нет сети или проект на паузе), поэтому включён локальный демо-режим. Данные останутся в этом браузере.'
+              : 'Supabase не подключён — работает полностью локальный демо-режим. Данные хранятся только в вашем браузере (IndexedDB), аккаунт можно создать на этой же странице.'}
         </p>
       </div>
     </Modal>

@@ -23,6 +23,7 @@ import type {
   Track,
 } from '../types'
 import { extractTags, fileKind, safeNick, uid } from './util'
+import { authRedirectUrl } from './config'
 
 /* ------------------------------------------------------------------ parsing */
 
@@ -136,9 +137,99 @@ export class SupabaseBackend implements Backend {
   private user: Profile | null = null
   private listeners = new Set<(u: Profile | null) => void>()
 
+  private url: string
+  private anonKey: string
+  private authSubscribed = false
+
   constructor(url: string, anonKey: string) {
+    this.url = url
+    this.anonKey = anonKey
     this.sb = createClient(url, anonKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+    })
+  }
+
+  /** Быстрая проверка: отвечает ли проект Supabase и есть ли таблицы. */
+  async probe(): Promise<boolean> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4000)
+    try {
+      const res = await fetch(`${this.url}/rest/v1/profiles?select=id&limit=1`, {
+        signal: controller.signal,
+        headers: { apikey: this.anonKey, Accept: 'application/json' },
+      })
+      return res.ok || res.status === 401
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  /** Вход через Google: уводим браузер на страницу согласия Supabase. */
+  async signInWithProvider(provider: 'google'): Promise<boolean> {
+    const { error } = await this.sb.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: authRedirectUrl(), queryParams: { prompt: 'select_account' } },
+    })
+    if (error) throw new Error(translateAuthError(error.message))
+    return true
+  }
+
+  /** Magic link: письмо со ссылкой вместо пароля. */
+  async signInWithMagicLink(email: string): Promise<void> {
+    const address = email.trim()
+    if (!address) throw new Error('Введите e-mail')
+    const { error } = await this.sb.auth.signInWithOtp({
+      email: address,
+      options: { emailRedirectTo: authRedirectUrl(), shouldCreateUser: true },
+    })
+    if (error) throw new Error(translateAuthError(error.message))
+  }
+
+  /** Подписка на изменения авторизации — ровно один раз за жизнь клиента. */
+  private subscribeAuth() {
+    if (this.authSubscribed) return
+    this.authSubscribed = true
+    this.sb.auth.onAuthStateChange((event, session) => {
+      void (async () => {
+        try {
+          if (event === 'SIGNED_OUT') {
+            this.user = null
+            this.emit()
+            return
+          }
+          if (!session?.user) return
+          const profile = await this.loadProfile(session.user.id)
+          if (profile) {
+            this.user = profile
+            this.emit()
+            return
+          }
+          // Профиля нет (вход через Google впервые) — создаём строку.
+          const meta = (session.user.user_metadata ?? {}) as Record<string, string>
+          const handle =
+            safeNick(meta.handle ?? meta.user_name ?? session.user.email?.split('@')[0] ?? 'user') ||
+            `user${Date.now() % 10000}`
+          const { data: created } = await this.sb
+            .from('profiles')
+            .upsert({
+              id: session.user.id,
+              handle,
+              name: (meta.full_name || meta.name || handle).toUpperCase().slice(0, 40),
+              avatar_url: meta.avatar_url ?? meta.picture ?? null,
+              bio: '',
+            })
+            .select('*')
+            .maybeSingle()
+          if (created) {
+            this.user = mapProfile(created as Row)
+            this.emit()
+          }
+        } catch (error) {
+          console.error('auth state change failed', error)
+        }
+      })()
     })
   }
 
@@ -159,6 +250,7 @@ export class SupabaseBackend implements Backend {
   }
 
   async init(): Promise<Profile | null> {
+    this.subscribeAuth()
     const { data } = await this.sb.auth.getSession()
     const authUser = data.session?.user
     if (!authUser) return null
@@ -175,21 +267,6 @@ export class SupabaseBackend implements Backend {
       if (created) profile = mapProfile(created as Row)
     }
     this.user = profile
-    this.sb.auth.onAuthStateChange((_event, session) => {
-      void (async () => {
-        try {
-          if (!session?.user) {
-            this.user = null
-            this.emit()
-            return
-          }
-          this.user = await this.loadProfile(session.user.id)
-          this.emit()
-        } catch (error) {
-          console.error('auth state change failed', error)
-        }
-      })()
-    })
     return profile
   }
 

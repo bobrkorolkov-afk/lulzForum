@@ -2,7 +2,9 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # main — обычный деплой; ветка сессии нужна, чтобы можно было открыть
+    # сайт по ссылке GitHub Pages ещё до мёржа.
+    branches: [main, arena/d300bb3a-lulzforum]
   workflow_dispatch:
 
 permissions:

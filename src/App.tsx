@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AppProvider, useApp } from './lib/app'
 import { PlayerProvider, usePlayer } from './lib/player'
+import { RadioProvider } from './lib/radio'
 import { RouterProvider, useRouter } from './lib/router'
 import { ToastProvider, ToastViewport, useToast } from './lib/toast'
 import { UIProvider, useUI } from './lib/ui'
@@ -8,6 +9,7 @@ import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
 import { RightRail } from './components/RightRail'
 import { Player } from './components/Player'
+import { RadioBar } from './components/RadioBar'
 import { MobileNav } from './components/MobileNav'
 import { AuthModal } from './components/AuthModal'
 import { Composer } from './components/Composer'
@@ -20,6 +22,7 @@ import { ChatsPage } from './pages/ChatsPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { GroupPage } from './pages/GroupPage'
 import { MusicPage } from './pages/MusicPage'
+import { RadioPage } from './pages/RadioPage'
 import { VaultPage } from './pages/VaultPage'
 import { FriendsPage } from './pages/FriendsPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -48,6 +51,8 @@ function Page() {
       return param ? <GroupPage groupId={param} channelId={sub} /> : <GroupsPage />
     case 'music':
       return <MusicPage />
+    case 'radio':
+      return <RadioPage />
     case 'vault':
       return <VaultPage />
     case 'friends':
@@ -128,6 +133,7 @@ function Shell() {
         c: '/chats',
         g: '/groups',
         m: '/music',
+        r: '/radio',
         v: '/vault',
         d: '/friends',
         n: '/notifications',
@@ -192,6 +198,7 @@ function Shell() {
       </div>
 
       <Player />
+      <RadioBar />
       <MobileNav />
       <AuthModal />
       <Composer />
@@ -233,6 +240,7 @@ function ShortcutsModal() {
     ['G → C', 'Чаты'],
     ['G → G', 'Сообщества'],
     ['G → M', 'Музыка'],
+    ['G → R', 'BITMAP FM'],
     ['G → V', 'Хранилище'],
     ['G → D', 'Друзья'],
     ['G → N', 'Уведомления'],
@@ -262,9 +270,11 @@ export default function App() {
       <RouterProvider>
         <AppProvider>
           <UIProvider>
-            <PlayerProvider>
-              <Shell />
-            </PlayerProvider>
+            <RadioProvider>
+              <PlayerProvider>
+                <Shell />
+              </PlayerProvider>
+            </RadioProvider>
           </UIProvider>
         </AppProvider>
       </RouterProvider>

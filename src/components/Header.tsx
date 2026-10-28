@@ -7,7 +7,7 @@ import { Icon } from './Icon'
 import { ThemeSwitch } from './ThemeSwitch'
 
 export function Header({ onMenu }: { onMenu: () => void }) {
-  const { user, unreadMessages, unreadNotifications, signOut, mode } = useApp()
+  const { user, unreadMessages, unreadNotifications, signOut, mode, offline } = useApp()
   const { navigate, route } = useRouter()
   const ui = useUI()
   const [query, setQuery] = useState(route.query.get('q') ?? '')
@@ -51,7 +51,18 @@ export function Header({ onMenu }: { onMenu: () => void }) {
           </span>
           <span className="logo__text">LULZFORUM</span>
         </button>
-        <span className={`mode-chip mode-chip--${mode}`}>{mode === 'local' ? 'DEMO' : 'SUPABASE'}</span>
+        <span
+          className={`mode-chip mode-chip--${mode}`}
+          title={
+            offline
+              ? 'Supabase не ответил — локальный демо-режим'
+              : mode === 'supabase'
+                ? 'Данные в Supabase: общие для всех'
+                : 'Демо-режим: данные в этом браузере'
+          }
+        >
+          {mode === 'local' ? (offline ? 'DEMO · OFFLINE' : 'DEMO') : 'SUPABASE'}
+        </span>
       </div>
 
       <form className="search" onSubmit={submit} role="search">

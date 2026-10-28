@@ -14,14 +14,14 @@ import { ThemeSwitch } from '../components/ThemeSwitch'
 import { getZaycevSettings, setZaycevSettings, type ZaycevProxyMode } from '../lib/zaycev'
 
 export function SettingsPage() {
-  const { user, signOut, files, tracks, posts, mode } = useApp()
+  const { user, signOut, files, tracks, posts, mode, offline } = useApp()
   const { navigate } = useRouter()
   const ui = useUI()
   const toast = useToast()
   const [reduceMotion, setReduceMotion] = useState(
     () => localStorage.getItem('lulzforum:reduce-motion') === '1',
   )
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, invertMedia, setInvertMedia } = useTheme()
   const [zaycev, setZaycev] = useState(() => getZaycevSettings())
 
   useEffect(() => {
@@ -93,7 +93,9 @@ export function SettingsPage() {
           <div className="settings-account__text">
             <b>{user.name}</b>
             <span>@{user.handle}</span>
-            <span className="chip chip--tiny">{mode === 'local' ? 'ДЕМО · LOCAL' : 'SUPABASE'}</span>
+            <span className="chip chip--tiny">
+              {mode === 'local' ? (offline ? 'ДЕМО · SUPABASE OFFLINE' : 'ДЕМО · LOCAL') : 'SUPABASE · ONLINE'}
+            </span>
           </div>
           <div className="settings-account__actions">
             <button className="btn" onClick={() => navigate(`/u/${user.handle}`)}>
@@ -133,6 +135,23 @@ export function SettingsPage() {
               {theme === 'dark' ? 'СВЕТЛАЯ' : 'ТЁМНАЯ'}
             </button>
           </div>
+        </div>
+        <div className="settings-row">
+          <div>
+            <b>Инвертировать картинки</b>
+            <p className="muted small">
+              В тёмной теме фото, обложки и аватарки тоже становятся негативом — так чёрно-белый мир остаётся
+              цельным. Если хочется смотреть фотографии как есть, выключите.
+            </p>
+          </div>
+          <button
+            className={`switch ${invertMedia ? 'is-on' : ''}`}
+            onClick={() => setInvertMedia(!invertMedia)}
+            role="switch"
+            aria-checked={invertMedia}
+          >
+            <span />
+          </button>
         </div>
         <div className="settings-row">
           <div>
@@ -255,6 +274,9 @@ export function SettingsPage() {
           </li>
           <li>
             <kbd>G</kbd> затем <kbd>M</kbd> — музыка
+          </li>
+          <li>
+            <kbd>G</kbd> затем <kbd>R</kbd> — BITMAP FM
           </li>
           <li>
             <kbd>G</kbd> затем <kbd>G</kbd> — сообщества

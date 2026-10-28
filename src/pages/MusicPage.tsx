@@ -3,6 +3,7 @@ import type { SavedTrack, Track } from '../types'
 import { useApp } from '../lib/app'
 import { usePlayer } from '../lib/player'
 import { useUI } from '../lib/ui'
+import { useRouter } from '../lib/router'
 import { useToast } from '../lib/toast'
 import { PROVIDER_LABEL, SEARCH_HINTS, isZaycevUrl, resolveMusicLink, resolveZaycevLink, searchMusic } from '../lib/music'
 import { AddToPlaylistModal, TrackRow } from '../components/TrackRow'
@@ -28,6 +29,7 @@ export function MusicPage() {
   } = useApp()
   const player = usePlayer()
   const ui = useUI()
+  const { navigate } = useRouter()
   const toast = useToast()
 
   const [tab, setTab] = useState<Tab>('search')
@@ -103,6 +105,9 @@ export function MusicPage() {
           <h1 className="page__title">МУЗЫКА</h1>
           <p className="page__sub">Поиск по всему интернету: Audius · iTunes · Creative Commons · SoundCloud · Яндекс Музыка</p>
         </div>
+        <button className="btn" onClick={() => navigate('/radio')} title="Нейро-радио BITMAP FM">
+          <Icon name="speaker" size={14} /> BITMAP FM
+        </button>
         <button className="btn btn--primary" onClick={() => playAll(savedQueue)} disabled={!savedQueue.length}>
           <Icon name="play" size={14} /> СЛУШАТЬ МОЁ
         </button>

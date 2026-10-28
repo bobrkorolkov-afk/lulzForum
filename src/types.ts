@@ -185,9 +185,19 @@ export interface AuthResult {
   needsConfirmation?: boolean
 }
 
+export interface AuthProviderInfo {
+  google: boolean
+}
+
 export interface Backend {
   mode: 'local' | 'supabase'
   init(): Promise<Profile | null>
+  /** Проверка доступности бэкенда (сеть/сервис). Необязательна. */
+  probe?(): Promise<boolean>
+  /** Вход через внешний провайдер (Google). Возвращает true, если ушли на редирект. */
+  signInWithProvider?(provider: 'google'): Promise<boolean>
+  /** Вход по ссылке на почту (magic link). */
+  signInWithMagicLink?(email: string): Promise<void>
   onAuthChange(cb: (user: Profile | null) => void): () => void
   signIn(email: string, password: string): Promise<AuthResult>
   signUp(email: string, password: string, handle: string, name: string): Promise<AuthResult>

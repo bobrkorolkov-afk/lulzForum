@@ -30,20 +30,30 @@ import type {
   Track,
 } from '../types'
 import { LocalBackend } from './localBackend'
+import { SUPABASE_ANON_KEY, SUPABASE_URL, supabaseConfigured } from './config'
 import { SupabaseBackend } from './supabaseBackend'
 import { useToast } from './toast'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+export { supabaseConfigured }
 
-export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_KEY)
+/**
+ * Активный бэкенд выбирается при старте: Supabase, если ключи есть и сервис
+ * отвечает, иначе — локальный демо-режим на IndexedDB. Проверка доступности
+ * идёт в AppProvider, поэтому снаружи бэкенд всегда доступен через прокси.
+ */
+let activeBackend: Backend = supabaseConfigured
+  ? new SupabaseBackend(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : new LocalBackend()
 
-function createBackend(): Backend {
-  if (supabaseConfigured && SUPABASE_URL && SUPABASE_KEY) return new SupabaseBackend(SUPABASE_URL, SUPABASE_KEY)
-  return new LocalBackend()
-}
-
-export const backend: Backend = createBackend()
+export const backend: Backend = new Proxy({} as Backend, {
+  get(_target, prop) {
+    const value = (activeBackend as unknown as Record<string | symbol, unknown>)[prop]
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(activeBackend) : value
+  },
+  has(_target, prop) {
+    return prop in (activeBackend as unknown as Record<string | symbol, unknown>)
+  },
+})
 
 export interface DataState {
   profiles: Profile[]
@@ -71,6 +81,8 @@ const emptyData: DataState = {
 
 interface AppValue extends DataState {
   mode: 'local' | 'supabase'
+  /** Supabase был настроен, но недоступен — ушли в локальный режим. */
+  offline: boolean
   booted: boolean
   ready: boolean
   user: Profile | null
@@ -84,6 +96,8 @@ interface AppValue extends DataState {
   signUp: (email: string, password: string, handle: string, name: string) => Promise<{ needsConfirmation: boolean }>
   signOut: () => Promise<void>
   signInDemo: () => Promise<void>
+  signInWithGoogle: () => Promise<void>
+  signInWithMagicLink: (email: string) => Promise<void>
   reload: () => Promise<void>
   updateProfile: (patch: Partial<Pick<Profile, 'name' | 'bio' | 'avatarUrl' | 'links' | 'handle'>>) => Promise<void>
   createPost: (input: PostInput) => Promise<void>
@@ -128,6 +142,7 @@ const AppContext = createContext<AppValue | null>(null)
 export function AppProvider({ children }: { children: ReactNode }) {
   const toast = useToast()
   const [booted, setBooted] = useState(false)
+  const [offline, setOffline] = useState(false)
   const [ready, setReady] = useState(false)
   const [user, setUser] = useState<Profile | null>(null)
   const [data, setData] = useState<DataState>(emptyData)
@@ -174,6 +189,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let alive = true
     ;(async () => {
       try {
+        if (activeBackend.mode === 'supabase' && activeBackend.probe) {
+          const reachable = await activeBackend.probe()
+          if (!reachable && alive) {
+            activeBackend = new LocalBackend()
+            setOffline(true)
+            toast.push('Supabase недоступен — включён локальный демо-режим', 'error')
+          }
+        }
         const initial = await backend.init()
         if (!alive) return
         setUser(initial)
@@ -195,7 +218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       alive = false
       unsub()
     }
-  }, [loadAll])
+  }, [loadAll, toast])
 
   const profileById = useCallback(
     (id: ID) => data.profiles.find((p) => p.id === id) ?? (user && user.id === id ? user : undefined),
@@ -282,6 +305,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await loadAll(res.user)
     toast.push('Это демо-аккаунт: можно всё потрогать', 'ok')
   }, [loadAll, toast])
+
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      if (backend.mode !== 'supabase' || !backend.signInWithProvider) {
+        toast.push('Google-вход работает только с подключённым Supabase', 'error')
+        return
+      }
+      await backend.signInWithProvider('google')
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e)
+      toast.push(
+        /provider is not enabled|not enabled/i.test(text)
+          ? 'Google-вход не включён в Supabase: Authentication → Providers → Google'
+          : text,
+        'error',
+      )
+    }
+  }, [toast])
+
+  const signInWithMagicLink = useCallback(
+    async (email: string) => {
+      try {
+        if (backend.mode !== 'supabase' || !backend.signInWithMagicLink) {
+          toast.push('Вход по почте доступен с подключённым Supabase', 'error')
+          return
+        }
+        await backend.signInWithMagicLink(email)
+        toast.push('Ссылка для входа отправлена на почту', 'ok')
+      } catch (e) {
+        toast.push(e instanceof Error ? e.message : 'Не удалось отправить ссылку', 'error')
+      }
+    },
+    [toast],
+  )
 
   const updateProfile = useCallback(
     async (patch: Partial<Pick<Profile, 'name' | 'bio' | 'avatarUrl' | 'links' | 'handle'>>) => {
@@ -886,6 +943,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       ...data,
       mode: backend.mode,
+      offline,
       booted,
       ready,
       user,
@@ -899,6 +957,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInDemo,
+      signInWithGoogle,
+      signInWithMagicLink,
       reload,
       updateProfile,
       createPost,
@@ -939,6 +999,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       data,
+      offline,
       booted,
       ready,
       user,
@@ -952,6 +1013,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       signInDemo,
+      signInWithGoogle,
+      signInWithMagicLink,
       reload,
       updateProfile,
       createPost,

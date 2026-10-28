@@ -817,15 +817,25 @@ kbd {
 
 /* ------------------------------------------------------------------ темы */
 
-/* Пиксельные картинки нарисованы «чёрным по белому» — в тёмной теме инвертируем. */
-[data-theme='dark'] .avatar--auto img,
-[data-theme='dark'] .art--auto img,
-[data-theme='dark'] .art--auto {
+/* В тёмной теме инвертируется вся графика: фото, обложки, аватарки, эмбеды.
+   Так отрицание остаётся честным — никаких «серых» полумер. Отключается
+   в настройках (data-media="normal"). */
+[data-theme='dark'][data-media='invert'] img,
+[data-theme='dark'][data-media='invert'] video,
+[data-theme='dark'][data-media='invert'] iframe,
+[data-theme='dark'][data-media='invert'] .art--auto,
+[data-theme='dark'][data-media='invert'] .avatar--auto {
   filter: invert(1);
 }
 
 .avatar--auto,
 .art--auto {
+  background: var(--paper);
+}
+
+/* Пиксельные идентиконы и обложки, нарисованные в SVG, тоже часть системы. */
+[data-theme='dark'] .art--auto,
+[data-theme='dark'] .avatar--auto {
   background: var(--paper);
 }
 

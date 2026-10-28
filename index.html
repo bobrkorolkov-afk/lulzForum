@@ -28,6 +28,7 @@
       try {
         var savedTheme = localStorage.getItem('lulzforum:theme')
         if (savedTheme === 'dark') document.documentElement.dataset.theme = 'dark'
+        if (localStorage.getItem('lulzforum:invert-media') !== '0') document.documentElement.dataset.media = 'invert'
       } catch (e) {}
     </script>
     <style>
