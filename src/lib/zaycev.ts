@@ -15,7 +15,10 @@ import { md5 } from './md5'
  * ------------------------------------------------------------------------- */
 
 const API = 'https://api.zaycev.net/external'
-const STATIC_KEY = 'kmskoNdkYHDnl3ol3'
+const SITE = 'https://zaycev.net'
+// Ключ подписи из клиента приложения; Zaycev меняет его между версиями,
+// поэтому пробуем известные варианты по порядку.
+const STATIC_KEYS = ['kmskoNdkYHDnl3ol3', '63kQw2LlpV3jv', 'd7DVdaELf']
 const SETTINGS_KEY = 'lulzforum:zaycev'
 const TOKEN_KEY = 'lulzforum:zaycev-token'
 
@@ -26,7 +29,12 @@ export interface ZaycevSettings {
   customUrl: string
 }
 
-const defaultProxy = (import.meta.env.VITE_ZAYCEV_PROXY as string | undefined) ?? ''
+const ENV = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}) as Record<
+  string,
+  string | undefined
+>
+
+const defaultProxy = ENV.VITE_ZAYCEV_PROXY ?? ''
 
 export function getZaycevSettings(): ZaycevSettings {
   try {
@@ -93,6 +101,24 @@ function attemptsFor(target: string): string[] {
   }
 }
 
+async function fetchText(target: string, timeoutMs = 12_000): Promise<string> {
+  let lastError: unknown = null
+  for (const url of attemptsFor(target)) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(url, { signal: controller.signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.text()
+    } catch (error) {
+      lastError = error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw new Error(`Zaycev недоступен из браузера. ${lastError instanceof Error ? lastError.message : ''}`.trim())
+}
+
 async function requestApi<T>(path: string, timeoutMs = 9000): Promise<T> {
   const target = `${API}${path}`
   let lastError: unknown = null
@@ -133,17 +159,31 @@ async function getAccessToken(force = false): Promise<string> {
 
   const hello = await requestApi<{ token?: string }>('/hello')
   if (!hello?.token) throw new Error('Zaycev: не удалось получить hello-токен')
-  const hash = md5(hello.token + STATIC_KEY)
-  const auth = await requestApi<{ token?: string }>(`/auth?code=${encodeURIComponent(hello.token)}&hash=${hash}`)
-  if (!auth?.token) throw new Error('Zaycev: сервис отклонил авторизацию (изменился API)')
-  const value = { token: auth.token, expires: Date.now() + 25 * 60_000 }
+  let accessToken: string | undefined
+  for (const key of STATIC_KEYS) {
+    const hash = md5(hello.token + key)
+    try {
+      const auth = await requestApi<{ token?: string }>(
+        `/auth?code=${encodeURIComponent(hello.token)}&hash=${hash}`,
+        8000,
+      )
+      if (auth?.token) {
+        accessToken = auth.token
+        break
+      }
+    } catch {
+      /* пробуем следующий ключ */
+    }
+  }
+  if (!accessToken) throw new Error('Zaycev: сервис отклонил авторизацию (изменился API)')
+  const value = { token: accessToken, expires: Date.now() + 25 * 60_000 }
   tokenCache = value
   try {
     sessionStorage.setItem(TOKEN_KEY, JSON.stringify(value))
   } catch {
     /* ignore */
   }
-  return auth.token
+  return accessToken
 }
 
 /* ------------------------------------------------------------------ парсинг */
@@ -238,16 +278,62 @@ function extractTracks(payload: unknown): unknown[] {
 
 /* --------------------------------------------------------------------- API */
 
+/** Запасной путь: разбираем обычную страницу поиска Zaycev.net (нужен DOMParser). */
+export async function searchZaycevHtml(query: string, limit = 8): Promise<Track[]> {
+  if (typeof DOMParser === 'undefined') return []
+  const q = query.trim()
+  if (!q) return []
+  const html = await fetchText(`${SITE}/search?query_search=${encodeURIComponent(q)}&type=all`, 11_000)
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const links = Array.from(doc.querySelectorAll<HTMLAnchorElement>('a[href*="/pages/"]'))
+  const seen = new Set<string>()
+  const tracks: Track[] = []
+
+  for (const link of links) {
+    const match = link.getAttribute('href')?.match(/\/pages\/\d+\/(\d+)\.shtml/)
+    if (!match) continue
+    const id = match[1]
+    if (seen.has(id)) continue
+    const raw = (link.getAttribute('title') ?? link.textContent ?? '').trim()
+    if (!raw) continue
+    const container = link.closest('li, article, div') ?? link
+    const img = container.querySelector('img')
+    const durationText = (container.textContent ?? '').match(/\b(\d{1,2}):(\d{2})\b/)
+    const [artistPart, ...rest] = raw.split(' - ')
+    const artist = rest.length ? artistPart.trim() : 'ZAYCEV.NET'
+    const title = rest.length ? rest.join(' - ').trim() : raw
+
+    seen.add(id)
+    tracks.push({
+      id: `zaycev:${id}`,
+      provider: 'zaycev',
+      title,
+      artist,
+      artwork: absolute(img?.getAttribute('src') ?? undefined) ?? null,
+      duration: durationText ? Number(durationText[1]) * 60 + Number(durationText[2]) : undefined,
+      streamUrl: null,
+      externalUrl: absolute(link.getAttribute('href') ?? undefined) ?? `${SITE}/pages/${id}.shtml`,
+    })
+    if (tracks.length >= limit) break
+  }
+  return tracks
+}
+
 export async function searchZaycev(query: string, limit = 8): Promise<Track[]> {
   const q = query.trim()
   if (!q) return []
-  const token = await getAccessToken()
-  const path = `/search?query=${encodeURIComponent(q)}&page=1&type=all&sort=&style=&access_token=${encodeURIComponent(token)}`
-  const payload = await requestApi<unknown>(path, 6000)
-  const tracks = extractTracks(payload)
-    .map(parseTrack)
-    .filter((t): t is Track => Boolean(t))
-  return tracks.slice(0, limit)
+  try {
+    const token = await getAccessToken()
+    const path = `/search?query=${encodeURIComponent(q)}&page=1&type=all&sort=&style=&access_token=${encodeURIComponent(token)}`
+    const payload = await requestApi<unknown>(path, 6000)
+    const tracks = extractTracks(payload)
+      .map(parseTrack)
+      .filter((t): t is Track => Boolean(t))
+    if (tracks.length) return tracks.slice(0, limit)
+  } catch {
+    /* API недоступен — идём на страницу поиска */
+  }
+  return searchZaycevHtml(q, limit)
 }
 
 export function isZaycevUrl(url: string): boolean {
