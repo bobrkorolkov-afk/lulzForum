@@ -15,7 +15,7 @@ interface NavItem {
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, unreadMessages, unreadNotifications, pendingIncoming, chats, friendIds, profileById } = useApp()
+  const { user, unreadMessages, unreadNotifications, pendingIncoming, chats, friendIds, profileById, posts } = useApp()
   const { navigate, route } = useRouter()
   const ui = useUI()
 
@@ -117,7 +117,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="sidebar__footer">
         <span className="sidebar__counter">
-          <Icon name="fire" size={12} /> {formatCount(12_400)} постов
+          <Icon name="fire" size={12} /> {formatCount(posts.length)} постов · {formatCount(friendIds.size)} друзей
         </span>
         <button className="sidebar__link" onClick={() => navigate('/about')}>
           Правила и о форуме

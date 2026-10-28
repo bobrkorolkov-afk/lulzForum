@@ -42,6 +42,18 @@
   <body>
     <div id="boot"><div class="box"><b>LULZFORUM</b><i></i></div></div>
     <div id="root"></div>
+    <noscript>
+      <div style="padding:24px;font-family:monospace;border:2px solid #000;margin:24px">
+        LULZFORUM требует JavaScript. Включите его и перезагрузите страницу.
+      </div>
+    </noscript>
+    <script>
+      // Если приложение не запустилось, не держим загрузочный экран вечно.
+      setTimeout(function () {
+        var boot = document.getElementById('boot')
+        if (boot) boot.remove()
+      }, 6000)
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
