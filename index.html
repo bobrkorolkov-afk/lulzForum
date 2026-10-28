@@ -58,10 +58,27 @@
       </div>
     </noscript>
     <script>
-      // Если приложение не запустилось, не держим загрузочный экран вечно.
+      // Если приложение не запустилось (например, страницу раздают из исходников
+      // ветки, а не из собранного артефакта), не держим загрузочный экран вечно
+      // и объясняем, что именно не так.
       setTimeout(function () {
         var boot = document.getElementById('boot')
-        if (boot) boot.remove()
+        if (!boot) return
+        var root = document.getElementById('root')
+        if (root && root.childElementCount > 0) {
+          boot.remove()
+          return
+        }
+        var pages = /github\.io$/i.test(location.hostname)
+        boot.innerHTML =
+          '<div class="box"><b>LULZFORUM</b>' +
+          (pages
+            ? '<p style="max-width:320px;font-size:12px;line-height:1.6;margin:10px 0 0">' +
+              'Сборка не опубликована: GitHub Pages раздаёт исходники ветки. ' +
+              'Включите Settings → Pages → Source: GitHub Actions — и сайт соберётся сам.</p>'
+            : '<p style="max-width:320px;font-size:12px;line-height:1.6;margin:10px 0 0">' +
+              'Не удалось загрузить приложение. Проверьте консоль браузера.</p>') +
+          '</div>'
       }, 6000)
     </script>
     <script type="module" src="/src/main.tsx"></script>
