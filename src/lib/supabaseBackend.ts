@@ -140,14 +140,20 @@ export class SupabaseBackend implements Backend {
       if (created) profile = mapProfile(created as Row)
     }
     this.user = profile
-    this.sb.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        this.user = null
-        this.emit()
-        return
-      }
-      this.user = await this.loadProfile(session.user.id)
-      this.emit()
+    this.sb.auth.onAuthStateChange((_event, session) => {
+      void (async () => {
+        try {
+          if (!session?.user) {
+            this.user = null
+            this.emit()
+            return
+          }
+          this.user = await this.loadProfile(session.user.id)
+          this.emit()
+        } catch (error) {
+          console.error('auth state change failed', error)
+        }
+      })()
     })
     return profile
   }
