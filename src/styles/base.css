@@ -1,0 +1,869 @@
+/* ============================================================================
+   LULZFORUM — базовая 1-битная тема: только чёрное и белое, жёсткие тени,
+   пиксельные границы. Никаких скруглений, градиентов и серого «по-настоящему».
+   ========================================================================== */
+
+:root {
+  --ink: #000000;
+  --paper: #ffffff;
+  --line: 2px solid var(--ink);
+  --shadow: 4px 4px 0 var(--ink);
+  --shadow-sm: 3px 3px 0 var(--ink);
+  --grid: rgba(0, 0, 0, 0.07);
+  --line-soft: rgba(0, 0, 0, 0.16);
+  --line-softer: rgba(0, 0, 0, 0.08);
+  --hatch: rgba(255, 255, 255, 0.18);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --inset: rgba(0, 0, 0, 0.08);
+  --font-ui: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: 'Handjet', 'JetBrains Mono', ui-monospace, monospace;
+  --header-h: 58px;
+  --player-h: 76px;
+  --mnav-h: 58px;
+  --radius: 0px;
+  --dither: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.85) 0 1px, transparent 1px 3px);
+  --dither-soft: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.5) 0 1px, transparent 1px 4px);
+}
+
+/* Инверсия: белое на чёрном. Меняются только роли цветов, геометрия та же. */
+[data-theme='dark'] {
+  --ink: #ffffff;
+  --paper: #000000;
+  --grid: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.22);
+  --line-softer: rgba(255, 255, 255, 0.1);
+  --hatch: rgba(0, 0, 0, 0.25);
+  --scrim: rgba(0, 0, 0, 0.72);
+  --inset: rgba(255, 255, 255, 0.1);
+  --dither: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.85) 0 1px, transparent 1px 3px);
+  --dither-soft: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.45) 0 1px, transparent 1px 4px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: geometricPrecision;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* полосы прокрутки — тоже пиксельные */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink) var(--paper);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--paper);
+  border-left: var(--line);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink);
+  border: 3px solid var(--paper);
+}
+
+/* ------------------------------------------------------------------ утилиты */
+
+.icon {
+  display: block;
+  flex: none;
+  image-rendering: pixelated;
+}
+
+.muted {
+  opacity: 0.62;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.pad {
+  padding: 12px 16px;
+}
+
+.mono {
+  font-family: var(--font-ui);
+}
+
+.hide-sm {
+  display: inline;
+}
+
+.flip {
+  transform: rotate(180deg);
+}
+
+.rotate-up {
+  transform: rotate(90deg);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack--posts {
+  gap: 16px;
+}
+
+.stack--tracks {
+  gap: 8px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--ink);
+  flex: none;
+  animation: pulse 2.4s steps(2) infinite;
+}
+
+.dot--unread {
+  width: 10px;
+  height: 10px;
+  margin-left: auto;
+}
+
+/* -------------------------------------------------------------- кнопки */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  min-height: 36px;
+  border: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.06s steps(2), box-shadow 0.06s steps(2), background 0.1s;
+  text-decoration: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  box-shadow: none;
+}
+
+.btn--primary {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.btn--icon {
+  padding: 6px;
+  min-width: 32px;
+  min-height: 32px;
+  box-shadow: none;
+  border-width: 2px;
+}
+
+.btn--icon:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--wide {
+  width: 100%;
+}
+
+.btn--danger {
+  color: var(--ink);
+  border-color: var(--ink);
+  background-image: var(--dither-soft);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+  background-image: none;
+}
+
+.btn.is-on {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--loadmore {
+  margin-top: 8px;
+  padding: 14px;
+  letter-spacing: 0.16em;
+}
+
+/* -------------------------------------------------------------- поля ввода */
+
+.input,
+textarea.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  border-radius: 0;
+  box-shadow: inset 2px 2px 0 var(--inset);
+}
+
+.input::placeholder,
+textarea::placeholder {
+  color: var(--ink);
+  opacity: 0.4;
+}
+
+.input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+
+.input--area {
+  resize: vertical;
+  min-height: 90px;
+  line-height: 1.5;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.field > span:first-child {
+  opacity: 0.7;
+}
+
+.input-wrap {
+  position: relative;
+  display: block;
+}
+
+.input-wrap .input {
+  padding-right: 44px;
+}
+
+.input-wrap__btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  box-shadow: none;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.inline-form {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.inline-form .input {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------- бейджи */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid var(--ink);
+}
+
+.badge--dot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  height: 18px;
+  min-width: 18px;
+  border-color: var(--paper);
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 2px solid var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--paper);
+  white-space: nowrap;
+}
+
+.chip--tiny {
+  padding: 1px 5px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.chip--pin {
+  border-style: dashed;
+  font-size: 9px;
+}
+
+.chip--btn {
+  cursor: pointer;
+  min-height: 28px;
+  padding: 4px 9px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.chip--btn:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: transform 0.06s steps(2), box-shadow 0.06s steps(2);
+}
+
+.tag:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.tag:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.tag i {
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.tag--big {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.tag--removable {
+  gap: 4px;
+}
+
+.tag--removable button {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 2px;
+  cursor: pointer;
+  display: flex;
+}
+
+/* ---------------------------------------------------------------- аватар */
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.avatar--ring {
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* --------------------------------------------------------------- сегменты */
+
+.segmented {
+  display: inline-flex;
+  border: var(--line);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+  background: var(--paper);
+}
+
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: none;
+  border-right: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.segmented__item:last-child {
+  border-right: none;
+}
+
+.segmented__item:hover {
+  background-image: var(--dither-soft);
+}
+
+.segmented__item.is-active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.segmented--sm .segmented__item {
+  padding: 5px 10px;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ------------------------------------------------------------------- прочее */
+
+.alert {
+  border: var(--line);
+  padding: 10px 12px;
+  font-size: 12px;
+  background-image: var(--dither-soft);
+}
+
+.alert--error {
+  background: var(--ink);
+  color: var(--paper);
+  background-image: none;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 20px;
+  border: 2px dashed var(--ink);
+  background: var(--paper);
+}
+
+.empty__art {
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  border: var(--line);
+  background-image: var(--dither-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.empty__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.empty__hint {
+  max-width: 44ch;
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 0;
+}
+
+.spinner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 2px dashed var(--ink);
+  font-size: 12px;
+}
+
+.spinner__blocks {
+  display: flex;
+  gap: 3px;
+}
+
+.spinner__blocks i {
+  width: 8px;
+  height: 8px;
+  background: var(--ink);
+  animation: blocks 0.8s steps(2) infinite;
+}
+
+.spinner__blocks i:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.spinner__blocks i:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.spinner__blocks i:nth-child(4) {
+  animation-delay: 0.3s;
+}
+
+.spinner__label {
+  opacity: 0.7;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.tips {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.tips li::marker {
+  content: '▪ ';
+}
+
+.tips--num li::marker {
+  content: counter(list-item) '. ';
+  font-weight: 700;
+}
+
+.code {
+  margin: 0;
+  padding: 14px;
+  border: var(--line);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.kv dt {
+  opacity: 0.6;
+}
+
+.kv dd {
+  margin: 0;
+  text-align: right;
+}
+
+.card {
+  border: var(--line);
+  background: var(--paper);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.card p {
+  font-size: 13px;
+}
+
+.switch {
+  position: relative;
+  width: 54px;
+  height: 28px;
+  border: var(--line);
+  background: var(--paper);
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+
+.switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--ink);
+  transition: transform 0.1s steps(3);
+}
+
+.switch.is-on span {
+  transform: translateX(26px);
+}
+
+.swatches {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.swatches i {
+  width: 26px;
+  height: 26px;
+  border: var(--line);
+  display: block;
+}
+
+/* ------------------------------------------------------------- анимации */
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes blocks {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.35;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes ticker {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 16px 0;
+  }
+}
+
+@keyframes slidein {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ темы */
+
+/* В тёмной теме инвертируется вся графика: фото, обложки, аватарки, эмбеды.
+   Так отрицание остаётся честным — никаких «серых» полумер. Отключается
+   в настройках (data-media="normal"). */
+[data-theme='dark'][data-media='invert'] img,
+[data-theme='dark'][data-media='invert'] video,
+[data-theme='dark'][data-media='invert'] iframe,
+[data-theme='dark'][data-media='invert'] .art--auto,
+[data-theme='dark'][data-media='invert'] .avatar--auto {
+  filter: invert(1);
+}
+
+.avatar--auto,
+.art--auto {
+  background: var(--paper);
+}
+
+/* Пиксельные идентиконы и обложки, нарисованные в SVG, тоже часть системы. */
+[data-theme='dark'] .art--auto,
+[data-theme='dark'] .avatar--auto {
+  background: var(--paper);
+}
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: var(--line);
+  background: var(--paper);
+  cursor: pointer;
+  padding: 0;
+}
+
+.theme-switch__cell {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-right: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.theme-switch__cell:last-child {
+  border-right: none;
+}
+
+.theme-switch__cell.is-on {
+  background: var(--ink);
+  color: var(--paper);
+}
